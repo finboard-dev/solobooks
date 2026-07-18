@@ -1,0 +1,20 @@
+{
+  "concept": "SoloBooks v1 (chat bookkeeping via Claude MCP, books in view-only Google Sheets, no bank feeds/CSV, no invoice email/payment links, pricing unannounced)",
+  "respondents": [
+    {"label": "consultant-1: 38yo brand consultant, $180k, FreshBooks $19, mildly shopping", "segment": "solo consultant", "dist": {"1": 0.08, "2": 0.32, "3": 0.42, "4": 0.15, "5": 0.03}},
+    {"label": "consultant-2: 51yo IT consultant, $250k, CPA-run QBO, satisfied incumbent", "segment": "solo consultant", "dist": {"1": 0.35, "2": 0.45, "3": 0.15, "4": 0.04, "5": 0.01}},
+    {"label": "consultant-3: 29yo designer, $75k, DIY spreadsheet, Claude Max, squeezed, shopping", "segment": "solo consultant", "dist": {"1": 0.02, "2": 0.08, "3": 0.25, "4": 0.45, "5": 0.20}},
+    {"label": "consultant-4: 44yo fractional CMO, $220k, FreshBooks Premium retainer autopilot", "segment": "solo consultant", "dist": {"1": 0.30, "2": 0.45, "3": 0.18, "4": 0.06, "5": 0.01}},
+    {"label": "consultant-5: 35yo grant writer, $95k, Wave free, squeezed, AR pain", "segment": "solo consultant", "dist": {"1": 0.06, "2": 0.24, "3": 0.40, "4": 0.24, "5": 0.06}},
+    {"label": "creator-1: 31yo course creator, $140k, QBSE $20, AI-curious, launch P&L pain", "segment": "creator/digital seller", "dist": {"1": 0.04, "2": 0.18, "3": 0.34, "4": 0.34, "5": 0.10}},
+    {"label": "creator-2: 27yo Etsy templates, $45k, Wave free, squeezed, subscription auditor", "segment": "creator/digital seller", "dist": {"1": 0.25, "2": 0.45, "3": 0.22, "4": 0.07, "5": 0.01}},
+    {"label": "creator-3: 39yo YouTuber, $260k, $300/mo bookkeeper, AI skeptic, flush", "segment": "creator/digital seller", "dist": {"1": 0.35, "2": 0.45, "3": 0.15, "4": 0.04, "5": 0.01}},
+    {"label": "creator-4: 33yo newsletter writer, $90k, erratic spreadsheet, Claude Max power user", "segment": "creator/digital seller", "dist": {"1": 0.02, "2": 0.08, "3": 0.22, "4": 0.42, "5": 0.26}},
+    {"label": "creator-5: 45yo photographer, $110k, FreshBooks payment links sacred, deposits pain", "segment": "creator/digital seller", "dist": {"1": 0.28, "2": 0.44, "3": 0.20, "4": 0.07, "5": 0.01}},
+    {"label": "advisor-1: 47yo solo CPA, 80 clients, QBO ProAdvisor, liability-cautious", "segment": "CPA/bookkeeper advisor", "dist": {"1": 0.12, "2": 0.36, "3": 0.38, "4": 0.12, "5": 0.02}},
+    {"label": "advisor-2: 36yo cloud bookkeeper CAS, 40 clients, tech-forward, turns away small leads", "segment": "CPA/bookkeeper advisor", "dist": {"1": 0.05, "2": 0.20, "3": 0.40, "4": 0.28, "5": 0.07}},
+    {"label": "advisor-3: 58yo EA tax preparer, 150 Schedule C clients, shoebox problem, change-averse", "segment": "CPA/bookkeeper advisor", "dist": {"1": 0.08, "2": 0.25, "3": 0.40, "4": 0.22, "5": 0.05}},
+    {"label": "advisor-4: 41yo fractional CFO for creators, MCP-comfortable, completeness hawk", "segment": "CPA/bookkeeper advisor", "dist": {"1": 0.04, "2": 0.16, "3": 0.38, "4": 0.32, "5": 0.10}},
+    {"label": "advisor-5: 50yo firm partner, 60 clients, QBO-standardized, app-sprawl burned", "segment": "CPA/bookkeeper advisor", "dist": {"1": 0.10, "2": 0.32, "3": 0.40, "4": 0.15, "5": 0.03}}
+  ]
+}
