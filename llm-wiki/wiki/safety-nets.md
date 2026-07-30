@@ -1,9 +1,9 @@
 ---
 type: concept
 created: 2026-07-17
-modified: 2026-07-30
+modified: 2026-07-31
 status: verified
-sources: [raw/2026-07-17-design-doc.md, raw/2026-07-18-scope-calls.md, raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-18-scope-calls.md, raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [safety, audit, validation]
 ---
 
@@ -37,7 +37,7 @@ The conditions above appear across five future call sites — `verify_books`, th
 | `PREVIEW_DRIFT` | posted lines ≠ the approved `preview_hash` | [[decision-record]] |
 | `OUTSTANDING_ITEM_AGED` | rec item uncleared beyond its policy age | `REC_RUN` ([[bank-reconciliation]]) |
 | `REC_PERIOD_DISCONTINUITY` | statement beginning balance ≠ prior run's ending balance — a skipped or overlapping statement | `REC_RUN` ([[bank-reconciliation]]) |
-| `CUTOFF_DATE_UNCONFIRMED` | an import created a draft in the first fiscal weeks; the statement date is a *clearing* date ([[cash-basis-recognition]] R10) | import + the December close |
+| `CUTOFF_DATE_UNCONFIRMED` | a money-**out** row the file marks **cheque-shaped**, or any money-**in** row, dated within `cutoff_ask_days` of the fiscal year start — the statement date is a *clearing* date, not the recognition date ([[cash-basis-recognition]] R10). **Never raised on a credit-card import whose mapping supplies a transaction date distinct from the posting date** (R1(b)). The narrowing is the rule: raised on every early-January row, a 22-row card CSV yields 22 dispositions where R10 requires zero. **(proposed 2026-07-31)** | `IMPORT_RUN` + the fiscal-year-end close |
 | `EVIDENCE_MISSING` | subject has no linked evidence | [[evidence]] |
 
 Every exception carries a `Disposition` — `OPEN | RESOLVED | ACKNOWLEDGED` — with **actor and reason**. `ACKNOWLEDGED` is how a close proceeds over a known exception without pretending it was fixed ([[period-locking-month-close]] step 1). Ages and windows are thresholds on the versioned [[policy-set]], not constants. **(proposed 2026-07-30)**

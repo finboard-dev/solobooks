@@ -1,9 +1,9 @@
 ---
 type: entity
 created: 2026-07-17
-modified: 2026-07-30
+modified: 2026-07-31
 status: verified
-sources: [raw/2026-07-17-sheets-layer-design.md, raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-17-sheets-layer-design.md, raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [sheets, drive, implementation]
 ---
 
@@ -24,5 +24,5 @@ tags: [sheets, drive, implementation]
 The layer has exactly **one write primitive** — append, never edit — and exactly **one durability mechanism**: an outbox *embedded in a PostingRecord*, indexed and drained as such ([[posting-pipeline]]). Every non-posting sheet write the object model now requires has **neither**. Closing the gap without weakening either rule:
 
 - **A cell update is not a supported operation.** Flipping a `cleared` cell mutates an existing row: rule 1 of [[general-ledger-sheet]] forbids it, the layer has no method for it, and tail-check dedupe cannot make it effectively-once — tail-check works because a `txn_id` is either present or absent, and "was this cell already flipped" has no equivalent test. **(proposed 2026-07-30)**
-- **Reconciliation state is appended**, to a third per-company sheet **`Reconciliations`** at the company folder root (`txn_id`, **`account_number`, `side`** (DEBIT|CREDIT), `statement_period`, `rec_id`, `cleared_at` — **keyed by the (txn_id, account_number, side) triple, because one transaction clears on as many statements as it has money legs; a txn_id-only key marks a transfer cleared on both accounts at once (proposed 2026-07-30)**; one row per clearing, superseded by a later row, never overwritten), loaded 1:1 as a third DuckDB table `rec_clears` ([[duckdb-layer]]). Append-only, self-sufficient (a human sees which lines cleared in which statement period with no system running), 1:1 loader preserved, no new GL column ([[bank-reconciliation]]). Appending bumps `books_version` ([[duckdb-layer]]) like any other cached-sheet write. **(proposed 2026-07-30)**
+- **Reconciliation state is appended**, to a third per-company sheet **`Reconciliations`** at the company folder root (`txn_id`, **`account_number`, `side`** (DEBIT|CREDIT), `statement_period`, `rec_id`, **`state`** (CLEARED|UNCLEARED — the effective state of a triple for a period is its latest row; without it an erroneous pairing is permanent, since an append-only superseding row can only restate *which* statement cleared a line, never that it is **not** cleared. **(proposed 2026-07-31)**), `cleared_at` — **keyed by the (txn_id, account_number, side) triple, because one transaction clears on as many statements as it has money legs; a txn_id-only key marks a transfer cleared on both accounts at once (proposed 2026-07-30)**; one row per clearing, superseded by a later row, never overwritten), loaded 1:1 as a third DuckDB table `rec_clears` ([[duckdb-layer]]). Append-only, self-sufficient (a human sees which lines cleared in which statement period with no system running), 1:1 loader preserved, no new GL column ([[bank-reconciliation]]). Appending bumps `books_version` ([[duckdb-layer]]) like any other cached-sheet write. **(proposed 2026-07-30)**
 - **The outbox is generalized out of the PostingRecord** into a standalone durable queue keyed `{company_id, target_sheet, idempotency_key}`, drained by the same single-drainer FIFO worker. Non-posting writes — rec clears, `archive/` copies, close-time exports ([[period-locking-month-close]]) — then get the same at-least-once + dedupe guarantee as postings; dedupe is `idempotency_key` tail-checked in the target sheet. The PostingRecord keeps an enqueue, not a queue. **(proposed 2026-07-30)**

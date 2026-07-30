@@ -1,9 +1,9 @@
 ---
 type: concept
 created: 2026-07-17
-modified: 2026-07-30
+modified: 2026-07-31
 status: verified
-sources: [raw/2026-07-17-design-doc.md, raw/2026-07-18-bucket1-fixes.md, raw/2026-07-18-scope-calls.md, raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-18-bucket1-fixes.md, raw/2026-07-18-scope-calls.md, raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [locking, close, retained-earnings]
 ---
 
@@ -28,6 +28,13 @@ Allowed in v1 (`unlock_period`), loudly audited, always requires approval ([[app
 
 A re-opened month re-renders its sheet on re-lock — the one place re-rendering exists. **Artifact permanence:** before any re-render, the current sheet is archived ("General Ledger (as locked YYYY-MM-DD)" in `archive/` — never deleted) and the audit log records a diff summary (txn_ids added/removed/changed). That covers the GL sheet only, and the renderings outsiders actually see are P&Ls, agings and packets — those are governed by the retained-renderings rule in [[policy-set]], which is what makes "every rendering a banker or accountant may have seen survives" true as stated ([[sheets-layer]]). **(proposed 2026-07-30)**
 
-## Year-end close: nothing to do
+## Year-end close: no closing ENTRIES, but two preconditions (proposed 2026-07-31)
 
 No closing entries ever — **Retained Earnings is computed** in balance-sheet SQL (cumulative prior-year net income; current-year net income shown as its own equity line). `fiscal_year_start` just tells reports where years cut ([[reports-and-analytics]], [[dates-and-timezones]]).
+
+A `CLOSE_RUN` whose period ends the **fiscal** year has two step-0 preconditions the monthly close does not. Both exist because a rule elsewhere is otherwise **inert**: the lock refuses the correct date and [[general-ledger-sheet]] rule 4 redirects the entry into the next year, invisibly to the reconciliation.
+
+1. **Cutoff dispositioned** ([[cash-basis-recognition]] R10). The following month's statement is imported for every money account and every pre-year-end item on it is dated at its true recognition date. A cheque written 12/28 clears in January; without this the lock refuses 12/28 and moves the deduction a whole year. **The cutoff pass is separately gated ahead of the lock** — it must be dispositioned before `1099_payments` or the accountant packet renders for that tax year, because information returns are due 01/31 and cannot wait for a card statement that closes 02/15. The pass also asks *in words* for **R5a events, which leave no statement footprint at all**: offsets, barters, and payments made on the taxpayer's behalf agreed before year end.
+2. **Cost recovery posted** ([[cash-basis-recognition]] R11). Depreciation / §179 / amortization entries for the year are posted at 12/31, or a `HUMAN` [[decision-record]] declares there are none. These are computed at tax prep in Feb–Apr, *after* the close, and `date > locked_through` refuses a 12/31 posting once the year is locked — so R11 yields Schedule C line 13 = $0 without this.
+
+Either found afterwards is an `AMENDMENT` ([[process-instance]]) that unlocks, posts at the true date and re-locks. **A precondition is not an `ExceptionKind`** — exceptions never block ([[safety-nets]]) — but a close may legitimately refuse to run.

@@ -1,9 +1,9 @@
 ---
 type: synthesis
 created: 2026-07-17
-modified: 2026-07-30
+modified: 2026-07-31
 status: verified
-sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [index, navigation]
 ---
 
