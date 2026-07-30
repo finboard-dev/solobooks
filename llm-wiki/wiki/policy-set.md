@@ -3,7 +3,7 @@ type: entity
 created: 2026-07-30
 modified: 2026-07-30
 status: draft
-sources: [raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [policy, versioning, reporting, canonical-definition]
 ---
 
@@ -22,7 +22,7 @@ Every policy input is currently a mutable scalar with no effective date. Mutatin
 | `fiscal_year_start` changed | Retained Earnings is computed at query time, so **locked** balance sheets restate |
 | `sales_tax.flat_rate` changed | a revised invoice PDF disagrees with the original the customer holds ([[invoice-artifact]]) |
 | `match_tolerance` changed | the packet's promised tolerance write-off list is not derivable at all |
-| R1–R9 revised (**already happened once** — see `log.md` 2026-07-18) | locked-period cash P&Ls change with no trace |
+| R1–R11 revised (**already happened twice** — `log.md` 2026-07-18 and 2026-07-30) | locked-period cash P&Ls change with no trace |
 
 None of these touch a single GL row. The ledger stays perfectly append-only and the *reports* still change — which is precisely the founder's point that meaning is not stored in the record.
 
@@ -36,12 +36,16 @@ PolicySet {
   accounting_basis, approval_mode, fiscal_year_start, timezone
   sales_tax {enabled, flat_rate}
   coa_tax_line_map  # account -> Schedule C line, versioned WITH the set
-  ruleset_versions {cash_basis: "R1-R9@2026-07-18", matching: "…"}
+  ruleset_versions {cash_basis: "R1-R11@2026-07-30", matching: "…"}
   thresholds {…}
 }
 ```
 
 Policy sets are **append-only**; [[company-object]] holds a pointer to the current one, not the values. Resolution is always *as-of a date*, never *as-of now*.
+
+## What is deliberately NOT a policy field (proposed 2026-07-30)
+
+**`prior_return_basis`** — the fact that decides whether collecting a pre-conversion invoice is taxable in the migration year. It is asked once at onboarding, recorded as a `HUMAN` [[decision-record]], and its effect is thereafter carried by the **composition of the posted historical documents** ([[onboarding-opening-balances]]). R4 keys off that composition, so nothing resolves a policy value for it after onboarding day. A field on an append-only, effective-dated object invites a later version that contradicts the ledger with no report able to detect it — the exact divergence this page exists to prevent, and the design's own "nothing stored that can be derived" rule ([[point-in-time-balances]]).
 
 ## Thresholds — two classes, deliberately different
 

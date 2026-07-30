@@ -3,7 +3,7 @@ type: concept
 created: 2026-07-17
 modified: 2026-07-30
 status: verified
-sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [onboarding, opening-balances]
 ---
 
@@ -15,8 +15,21 @@ tags: [onboarding, opening-balances]
 2. **Opening balance JE** dated books-start-minus-one-day, posted to the first [[general-ledger-sheet]]. Agent-guided, two depths: simple ("what was your checking balance on Jan 1?") or **full prior trial balance** for QuickBooks migrators — same JE, any accounts.
 3. Whatever doesn't balance plugs to **Opening Balance Equity** ([[chart-of-accounts]]) — debits always equal credits even with partial info; accountant reclassifies later.
 4. **Historical open invoices/bills** entered individually (real dates, posted to opening period) so aging and future payments work with proper refs ([[pairing-and-matching]]).
-5. **Double-count rule:** the opening JE **never includes AR/AP lines** — compose rejects them; AR/AP at books start is built exclusively from the historical open documents. Historical invoices offset to **OBE, not Sales** (`DR AR / CR OBE`; bills `DR OBE / CR AP`) — the income belonged to the prior system's books. When a pre-books-start invoice is paid later, its OBE composition is a balance-sheet line → recognizes **nothing** in cash-basis P&L ([[cash-basis-recognition]] R4). No AR twice, no phantom income, no double taxation.
-6. Books are `incomplete` — reports run with a warning banner — until the **whole onboarding completes**, not until the JE posts. **(proposed 2026-07-30)**
+5. **Double-count rule:** the opening JE **never includes AR/AP lines** — compose rejects them; AR/AP at books start is built exclusively from the historical open documents. No AR twice, no phantom income, no double taxation.
+6. **Composition of a historical open document depends on `prior_return_basis` — asked once, at onboarding. (proposed 2026-07-30)**
+
+The question is **"on the last return you filed, was business income reported on the cash method or the accrual method?"** — *not* what software the books were in. Under the cash method an unpaid invoice is never reported however the books were kept, so **"I had no books" can never mean "already reported"**; absent an accrual return the answer is `CASH`.
+
+| `prior_return_basis` | Historical open invoice | Why |
+|---|---|---|
+| `ACCRUAL` | `DR AR / CR OBE` (bills `DR OBE / CR AP`) — recognizes **nothing** on collection ([[cash-basis-recognition]] R4) | the prior return already reported that income; recognizing again would double-tax |
+| `CASH` (the default, and the answer whenever no accrual return was filed) | `DR AR / CR` **the account the sale actually was** (bills `DR` **the account the purchase actually was** `/ CR AP`), dated pre-`books_start_date` — R4 fires normally at settlement | the taxpayer has **never** reported it, so collecting it after conversion is income in the year received |
+
+- **Do not hardcode `Sales` and `Expense`.** The credit on a historical invoice is whatever the sale was, and the debit on a historical bill is whatever the purchase was — including a **balance-sheet** account. A $12,000 unpaid bill for a machine composes `DR Machinery & Equipment / CR AP`; forcing it to `DR Equipment Expense` deducts the machine in full at settlement **and again** through §179/MACRS ([[cash-basis-recognition]] R11) — the same $12,000 twice. R4's balance-sheet carve-out must survive this branch intact. **(proposed 2026-07-30)**
+- Under `CASH` the pre-`books_start_date` date keeps the line out of every reported period, and each historical document is **self-balancing on its own** — the basis choice only changes which account the offsetting side lands in, so nothing appears twice on either basis. **(proposed 2026-07-30)**
+- The rule as originally written applied the `ACCRUAL` treatment to **everyone**, which for a prior cash-basis filer silently dropped both the income on collection and the deduction on payment — on the first return filed from these books, against a 1099 the payer did file. **(proposed 2026-07-30)**
+- `prior_return_basis` is **not** a [[policy-set]] field. It is a `HUMAN` [[decision-record]] on this process instance, and its effect is then carried permanently by the composition of the posted documents. R4 keys off that composition, never off a resolved policy value, so nothing reads a field after onboarding day — a second copy on an effective-dated object could later contradict the ledger with no report able to tell. Correcting it is an `AMENDMENT` over the documents, not a new policy version. **(proposed 2026-07-30)**
+7. Books are `incomplete` — reports run with a warning banner — until the **whole onboarding completes**, not until the JE posts. **(proposed 2026-07-30)**
 
 Seed [[chart-of-accounts]] is created here too. The opening JE anchors all [[point-in-time-balances]].
 

@@ -3,7 +3,7 @@ type: concept
 created: 2026-07-18
 modified: 2026-07-30
 status: verified
-sources: [raw/2026-07-18-scope-calls.md, raw/2026-07-18-cpa-firm-review.md, raw/2026-07-18-cas-firm-review.md, raw/2026-07-30-process-aware-objects.md]
+sources: [raw/2026-07-18-scope-calls.md, raw/2026-07-18-cpa-firm-review.md, raw/2026-07-18-cas-firm-review.md, raw/2026-07-30-process-aware-objects.md, raw/2026-07-30-tri-persona-review.md]
 tags: [reconciliation, controls, v1]
 ---
 
@@ -11,7 +11,32 @@ tags: [reconciliation, controls, v1]
 
 > Statement-based reconciliation per money account per month, built on the CSV import. Demanded independently by the buyer panel's advisors, the CPA review, and the CAS review — "the single biggest gap between this design and reliance."
 
-- **A `REC_RUN`** ([[process-instance]]), one per money account × statement period — inputs: the imported statement rows ([[mcp-tool-surface]] `import_bank_csv`); outputs: cleared pairings, outstanding items, discrepancy amount. This replaces the ad-hoc Mongo "Rec object"; import and rec stop being two shapes of one loop. **(proposed 2026-07-30)**
+- **A `REC_RUN`** ([[process-instance]]), one per money account × statement period — inputs: `statement_period {start, end}`, **`statement_beginning_balance`, `statement_ending_balance`**, and the imported statement rows ([[mcp-tool-surface]] `import_bank_csv`); outputs: cleared pairings, outstanding items, the residual. This replaces the ad-hoc Mongo "Rec object"; import and rec stop being two shapes of one loop. **(proposed 2026-07-30)**
+
+## The rec must tie to a balance, not just match rows (proposed 2026-07-30)
+
+Matching rows proves nothing about **completeness**: a transaction absent from the books *and* unnoticed on the statement is invisible to row-matching. The defining arithmetic was missing, and the balance-check *fallback* this was meant to upgrade ("books say Checking = $8,412 — does your bank agree?") actually captured the bank balance that the upgrade did not.
+
+```
+    signed_statement_balance      (+ for asset accounts; − for credit-card/liability, i.e. owed is negative)
+  + Σ uncleared book DEBITS  to the account   (date ≤ period end)
+  − Σ uncleared book CREDITS to the account   (date ≤ period end)
+  = adjusted balance
+  residual = adjusted balance − signed book balance (Σ DR − Σ CR) at period end   → must be 0.00
+```
+
+**Stated in signed terms deliberately (proposed 2026-07-30).** On a bank account an uncleared debit is a deposit in transit and an uncleared credit is an outstanding cheque — but a **credit card is a money account too** ([[cash-basis-recognition]] R1) and both labels invert there: a debit is a payment, a credit is a charge. The deposit-in-transit / outstanding-cheque wording is bank presentation only; one signed definition holds for every money account. Getting this wrong makes every clean credit-card rec fail and then invites a monthly plug into Reconciliation Discrepancies.
+
+**Clearing is a property of a `(txn_id, account_number, side)` triple, not of a transaction (proposed 2026-07-30).** One transaction clears on as many statements as it has money legs: a Checking→Savings transfer clears on the Checking statement in January and the Savings statement in February. A `txn_id`-only key marks it cleared everywhere at once and drives the second account's residual off by the whole transfer amount. "Uncleared" therefore means *no `rec_clears` row for that triple* ([[sheets-layer]]).
+
+**The residual is computed after unmatched statement rows are dispositioned. (proposed 2026-07-30)** A bank fee on the statement but not yet in the books is not a discrepancy — it is a missing entry, and it routes to the import draft queue like any other unmatched row. Only what survives that pass is unexplained.
+
+- `discrepancy_amount` **is that residual** — not leftover unmatched rows. A nonzero residual is the only thing that may post to **Reconciliation Discrepancies**, unchanged, and `verify_books` still flags it.
+- **Period continuity:** `statement_beginning_balance` must equal the prior completed run's `statement_ending_balance` for that account. A mismatch means a skipped or overlapping statement and raises `REC_PERIOD_DISCONTINUITY` ([[safety-nets]]) — it is not silently absorbed into the residual.
+- **Base case — the only free audit the opening balance ever gets. (proposed 2026-07-30)** The *first* run on an account has no prior run, so `statement_beginning_balance` is asserted against the book balance at `books_start_date − 1`, i.e. against the opening JE ([[onboarding-opening-balances]]). The user is already typing that number to do the rec at all, and the opening balance is otherwise never verified by anything. A mismatch names the opening JE rather than becoming an anonymous plug.
+- **Statement periods are not calendar months. (proposed 2026-07-30)** Card statements routinely run 12/16→01/15. The close takes the run whose `statement_period` **contains** the month end, not one bounded by it ([[period-locking-month-close]]) — otherwise no card can ever produce a run for December and close step 2 is acknowledged away every month.
+- **Clearings never reach a locked period:** a `CLEARING` dated at or before `locked_through` is refused ([[period-locking-month-close]]), since it would mutate a closed month's reconciled state.
+- Cutoff interacts here: where a statement row clears an entry already in the books, **the book date governs** and clearing only sets `cleared` ([[cash-basis-recognition]] R10). A misdated December cheque is invisible to this rec, which is why the rec is a control and not *the* control.
 - **Each statement-row-to-GL-line pairing is a `CLEARING` [[decision-record]]** — rule fired, alternatives not taken, confidence, actor ([[matching-engine]] cascade, unchanged). This is what makes a rec **re-performable**: today only a `cleared` boolean survives, so the pairing that produced it is lost and no reviewer can re-do the month. **(proposed 2026-07-30)**
 - **`cleared` is an appended row, never a mutated cell** — written to the `Reconciliations` sheet ([[sheets-layer]]). It is not a [[general-ledger-sheet]] column (rejected by the column-admission rule) and never a cell edit on a posted GL row. **(proposed 2026-07-30)**
 - **Statement rows are [[evidence]] at zero capture cost** — `STATEMENT_ROW` refs `{rec_id, row_no}` already exist in the run; linking them backs every clearing and every discrepancy without asking the user for anything. **(proposed 2026-07-30)**

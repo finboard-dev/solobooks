@@ -36,6 +36,6 @@ Vendor credits, partial bill payments, vendor refunds — identical with signs f
 | Owner pays business expense personally | `DR Expense / CR Owner's Contributions` — the #1 solopreneur transaction |
 | Owner draws money out | `DR Owner's Draw / CR Bank` |
 | Transfer between accounts / credit-card payoff | Transfer doc — never touches P&L |
-| Customer is also a vendor — offset | JE: `DR AP ref:BILL / CR AR ref:INV` — both balances close |
+| Customer is also a vendor — offset | JE: `DR AP ref:BILL / CR AR ref:INV` — both balances close. **On cash basis this IS a recognition event — constructive receipt and payment — for `min(AP debits, AR credits)`; any walk-away leg in the same posting recognizes nothing ([[cash-basis-recognition]] R5a). (proposed 2026-07-30)** |
 
 Deferred: multi-currency, chargeback-dispute workflow, batch deposits (matters only with bank feeds) — see [[v1-scope]].

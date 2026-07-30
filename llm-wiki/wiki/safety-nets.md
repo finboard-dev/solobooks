@@ -36,6 +36,8 @@ The conditions above appear across five future call sites — `verify_books`, th
 | `IMPORT_ROW_REJECTED` | statement row could not become a draft | `IMPORT_RUN` ([[process-instance]]) |
 | `PREVIEW_DRIFT` | posted lines ≠ the approved `preview_hash` | [[decision-record]] |
 | `OUTSTANDING_ITEM_AGED` | rec item uncleared beyond its policy age | `REC_RUN` ([[bank-reconciliation]]) |
+| `REC_PERIOD_DISCONTINUITY` | statement beginning balance ≠ prior run's ending balance — a skipped or overlapping statement | `REC_RUN` ([[bank-reconciliation]]) |
+| `CUTOFF_DATE_UNCONFIRMED` | an import created a draft in the first fiscal weeks; the statement date is a *clearing* date ([[cash-basis-recognition]] R10) | import + the December close |
 | `EVIDENCE_MISSING` | subject has no linked evidence | [[evidence]] |
 
 Every exception carries a `Disposition` — `OPEN | RESOLVED | ACKNOWLEDGED` — with **actor and reason**. `ACKNOWLEDGED` is how a close proceeds over a known exception without pretending it was fixed ([[period-locking-month-close]] step 1). Ages and windows are thresholds on the versioned [[policy-set]], not constants. **(proposed 2026-07-30)**
