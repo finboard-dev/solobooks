@@ -1,9 +1,9 @@
 ---
 type: concept
 created: 2026-07-17
-modified: 2026-07-17
+modified: 2026-07-30
 status: verified
-sources: [raw/2026-07-17-matching-engine-design.md]
+sources: [raw/2026-07-17-matching-engine-design.md, raw/2026-07-30-process-aware-objects.md]
 tags: [matching, payments, deterministic, implementation]
 ---
 
@@ -33,8 +33,14 @@ Unknown or closed refs → validation error naming the valid open refs (the agen
 
 `MatchProposal {rule, applications[], remainder: {treatment, amount}, alternatives, explanation}` — never a posting. Stored on the draft Payment doc → [[approval-flow]] → [[posting-pipeline]]. The `explanation` appears in both the approval preview and the audit log ([[safety-nets]]).
 
+- `MatchProposal` **is an instance of the [[decision-record]] shape** (`kind = MATCH`), not a bespoke one. It was this pattern done right — rule cited, alternatives preserved, human-readable explanation — and principle #9 makes it *the* pattern: `rule_id`, `alternatives[]`, `confidence` and `reason_verbatim` are the generic fields, not matching-specific ones. Nothing about the cascade or its output changes. **(proposed 2026-07-30)**
+- The winning `rule_id` (`RULE_EXACT_SINGLE`, `RULE_TOLERANCE_WRITEOFF`, `RULE_RETAINER`…) is carried into the resulting posting's `provenance` at COMMIT ([[decision-record]]). **(proposed 2026-07-30)**
+
 ## Tolerance
 
 `match_tolerance` config, default $0.99: within it, propose full settlement with the difference auto-lined to Bank Fees / Sales Discounts, shown in the preview. Avoids penny-crumb open balances; CPA-standard. Cent-exact-only was rejected.
+
+- The write-off posts `DR Sales Discounts (or Bank Fees) / CR AR ref=INV-xxxx` — it settles under the universal ref rule ([[pairing-and-matching]]) and is, on the sheet, **indistinguishable from a real bank fee**; `line_reason` ([[general-ledger-sheet]]) and `rule_id` on provenance are what tell them apart. **(proposed 2026-07-30)**
+- `match_tolerance` is an **operational threshold on the versioned [[policy-set]]**, resolved as-of a date — never deployment config. **(proposed 2026-07-30)**
 
 AP side mirrors everything for bills ([[document-model]]).

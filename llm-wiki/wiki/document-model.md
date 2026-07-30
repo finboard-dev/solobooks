@@ -1,9 +1,9 @@
 ---
 type: entity
 created: 2026-07-17
-modified: 2026-07-17
+modified: 2026-07-30
 status: verified
-sources: [raw/2026-07-17-design-doc.md]
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md]
 tags: [documents, journal, accounting]
 ---
 
@@ -30,3 +30,14 @@ Rules:
 - New document type = new emitter config, not new tables (extension without modification).
 - Posting writes append-only lines to the [[general-ledger-sheet]]; edits/voids are reversal + repost.
 - All postings flow through [[approval-flow]].
+- Posting also writes the PostingRecord's `provenance` sub-document at COMMIT ([[decision-record]]) — unbackfillable, so it ships with the first posting ever written. **(proposed 2026-07-30)**
+
+## Context fields (nullable seams)
+
+Every document carries the context buckets of [[financial-object-model]] as nullable fields. All are **free capture only** ([[the-skill]]) and none can block a posting.
+
+| Field | Answers | Notes |
+|---|---|---|
+| `origin {type, ref}` | "what **caused** this to exist?" | **(proposed 2026-07-30)** `OriginKind` enum: `RECURRING_SCHEDULE \| IMPORT_RUN \| AMENDMENT \| CHAT \| SYSTEM`. A **different edge from `ref`**, which stays settlement-only and unchanged ([[pairing-and-matching]]). Mongo field, never a GL column. |
+| `evidence[]` | "what backs this up?" | **(proposed 2026-07-30)** a link, never a store; never blocks a posting ([[evidence]]) |
+| `process_refs[]` | "which runs was it part of?" | **(proposed 2026-07-30)** → [[process-instance]]. A document *participates in* processes; workflow is never embedded in the document. |

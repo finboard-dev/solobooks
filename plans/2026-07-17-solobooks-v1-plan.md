@@ -1,11 +1,12 @@
 # SoloBooks v1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-> **Design authority:** the knowledge base at `finboard/solobooks/llm-wiki/wiki/index.md` (28 pages). Where this plan and the wiki disagree, the wiki wins — flag the conflict, don't improvise.
+> **Design authority:** the knowledge base at `finboard/solobooks/llm-wiki/wiki/index.md` (36 pages). Where this plan and the wiki disagree, the wiki wins — flag the conflict, don't improvise.
+> **2026-07-30 realignment:** the process-aware object model (`financial-object-model`, `process-instance`, `decision-record`, `evidence`, `policy-set`, `context-assembly`) is folded into the tasks below. Those pages are `status: draft` pending founder confirmation — **do not start Phase 1 until they are confirmed**, because Tasks 1.1/1.4/1.8 and 2.1/2.3 freeze enums, dataclasses and an append-only record shape that cannot be changed afterwards. Provenance is **unbackfillable**: what COMMIT does not capture is gone.
 
 **Goal:** Ship SoloBooks v1 — chat-driven double-entry accounting for solopreneurs: MCP tools over a FastAPI service, operational truth in MongoDB, the ledger projected to view-only Google Sheets, analytics via DuckDB, minimal Next.js web app with Better Auth.
 
-**Architecture:** One Python service (FastMCP mounted on FastAPI) with a pure accounting domain layer (`app/domain/` — zero I/O imports), a 5-step posting pipeline (COMPOSE→RESERVE→COMMIT→PROJECT→FINALIZE, outbox embedded in the PostingRecord, sheet tail-check idempotency), a stateless DuckDB read side keyed by `ledger_version`, and thin MCP tools. Auth is API-key until Phase 8, then Better Auth OAuth Provider plugin. See wiki: `three-store-architecture`, `posting-pipeline`, `duckdb-layer`, `auth-wiring`.
+**Architecture:** One Python service (FastMCP mounted on FastAPI) with a pure accounting domain layer (`app/domain/` — zero I/O imports), a 5-step posting pipeline (COMPOSE→RESERVE→COMMIT→PROJECT→FINALIZE, outbox embedded in the PostingRecord, sheet tail-check idempotency), a stateless DuckDB read side keyed by `books_version`, a Mongo context read side (`app/reads/`), and thin MCP tools. Auth is API-key until Phase 8, then Better Auth OAuth Provider plugin. See wiki: `three-store-architecture`, `posting-pipeline`, `duckdb-layer`, `auth-wiring`.
 
 **Tech Stack:** Python 3.13, uv, FastAPI, FastMCP v3, motor (async Mongo), DuckDB, pandas/pyarrow, sqlglot, hypothesis, pytest; Next.js 15 + Better Auth (Mongo adapter, OAuth Provider plugin); Google Sheets/Drive/Docs APIs via a service account; Docker + docker-compose (Mongo) for local dev.
 
@@ -37,7 +38,9 @@ solobooks/
 │   │   │   ├── mongo.py          # client, collections, indexes
 │   │   │   ├── audit.py          # append-only audit writer + @audited decorator
 │   │   │   ├── auth.py           # P6: API-key verify; P8: JWKS JWT verify
-│   │   │   ├── renderer.py       # token-budget CSV table renderer
+│   │   │   ├── renderer.py       # token-budget CSV table renderer + section renderer (wiki: context-assembly)
+│   │   │   ├── process.py        # NEW — generic ProcessInstance store, domain-blind (principle #1)
+│   │   │   ├── decisions.py      # NEW — generic DecisionRecord + EvidenceRef store, domain-blind
 │   │   │   ├── sql_guard.py      # sqlglot SELECT-only guard
 │   │   │   └── ratelimit.py      # sliding-window middleware (P9)
 │   │   ├── domain/               # PURE — the accounting brain
@@ -49,6 +52,7 @@ solobooks/
 │   │   │   ├── compose.py        # validation pipeline: accounts exist, lock check, dup check
 │   │   │   ├── matching.py       # rule cascade → MatchProposal
 │   │   │   ├── csv_import.py     # statement rows → draft document intents
+│   │   │   ├── policy.py         # NEW — PolicySet resolution as-of a date (wiki: policy-set)
 │   │   │   └── locking.py        # locked_through rules, cross-month redirect
 │   │   ├── pipeline/             # write path (Mongo + outbox)
 │   │   │   ├── counters.py       # atomic $inc sequences
@@ -60,9 +64,12 @@ solobooks/
 │   │   │   ├── provision.py      # company folder, lazy month files, sharing
 │   │   │   ├── ledger_writer.py  # append txn, tail_check, re_render_month (TOTALS template lives in provision.py)
 │   │   │   └── coa_writer.py     # full COA sheet rewrite
-│   │   ├── analytics/            # read side
-│   │   │   ├── loader.py         # sheets → arrow → duckdb tables
-│   │   │   ├── cache.py          # {company: (conn, ledger_version)} LRU
+│   │   ├── reads/                # NEW — Mongo read side (context, not ledger; wiki: context-assembly)
+│   │   │   ├── objects.py        # get_object(ref, lens) — the dossier assembler
+│   │   │   └── trails.py         # get_audit_trail(ref) over the audit subject_ref edge
+│   │   ├── analytics/            # read side (LEDGER only — context is unreachable from here)
+│   │   │   ├── loader.py         # sheets → arrow → duckdb tables (gl_lines, accounts, rec_clears)
+│   │   │   ├── cache.py          # {company: (conn, books_version)} LRU
 │   │   │   ├── views.py          # v_lines, v_balances, v_open_items, v_pnl, v_pnl_cash
 │   │   │   └── reports.py        # parameterized SELECTs per report
 │   │   ├── artifacts/
@@ -117,7 +124,8 @@ solobooks/
 
 ### Task 1.1: Enums
 **Files:** `app/domain/enums.py`, `tests/test_enums.py`
-- [ ] `AccountType` (ASSET/LIABILITY/EQUITY/INCOME/EXPENSE), `DetailType` (BANK, AR, AP, FIXED_ASSET, CREDIT_CARD, COGS, …), `DocType` (INVOICE, PAYMENT, BILL, BILL_PAYMENT, SALES_RECEIPT, CREDIT_NOTE, VENDOR_CREDIT, TRANSFER, JOURNAL_ENTRY), `DocStatus` (DRAFT/POSTED/VOIDED), `GLColumn` (ordered — TXN_ID, DATE, TYPE, REF, ACCOUNT_NUMBER, ACCOUNT_NAME, DEBIT, CREDIT, CUSTOMER, PROJECT, VENDOR, CLASS, LOCATION, DUE_DATE, MEMO, POSTED_AT, POSTED_BY). Test: GLColumn order matches wiki `general-ledger-sheet`. Commit `feat: domain enums`.
+- [ ] `AccountType` (ASSET/LIABILITY/EQUITY/INCOME/EXPENSE), `DetailType` (BANK, AR, AP, FIXED_ASSET, CREDIT_CARD, COGS, …), `DocType` (INVOICE, PAYMENT, BILL, BILL_PAYMENT, SALES_RECEIPT, CREDIT_NOTE, VENDOR_CREDIT, TRANSFER, JOURNAL_ENTRY), `DocStatus` (DRAFT/POSTED/VOIDED), `GLColumn` (ordered — TXN_ID, DATE, TYPE, REF, **REVERSES_TXN_ID**, ACCOUNT_NUMBER, ACCOUNT_NAME, DEBIT, CREDIT, CUSTOMER, PROJECT, VENDOR, CLASS, LOCATION, DUE_DATE, **LINE_REASON**, MEMO, POSTED_AT, POSTED_BY). Test: GLColumn order matches wiki `general-ledger-sheet`.
+- [ ] **Process-aware vocabulary (2026-07-30 realignment — these freeze here, add them now):** `ProcessType` (IMPORT_RUN, REC_RUN, CLOSE_RUN, AMENDMENT, ONBOARDING), `TriggerKind` (USER_CHAT, SCHEDULE, IMPORT, CLOSE, SYSTEM), `ProcessState` (OPEN, COMPLETED, ABANDONED), `DecisionKind` (MATCH, APPROVAL, REJECTION, CATEGORIZATION, TOLERANCE_WRITE_OFF, DUPLICATE_DISPOSITION, UNCATEGORIZED_PARKING, CLEARING, LOCK, UNLOCK, VOID, AMENDMENT), `ActorKind` (HUMAN, AGENT, RULE, SYSTEM), `Confidence` (EXACT, HIGH, MEDIUM, LOW, AMBIGUOUS), `ExceptionKind` (UNCATEGORIZED, UNAPPLIED_CREDIT, STALE_UNEARNED, NONZERO_OBE, RECONCILIATION_DISCREPANCY, PENDING_DRAFT, TRIAL_BALANCE_BREAK, DUPLICATE_SUSPECTED, IMPORT_ROW_REJECTED, PREVIEW_DRIFT, OUTSTANDING_ITEM_AGED, EVIDENCE_MISSING), `Disposition` (OPEN, RESOLVED, ACKNOWLEDGED), `EvidenceKind` (DRIVE_FILE, STATEMENT_ROW, CONVERSATION, IMPORT_ROW, ARTIFACT), `OriginType`, `LineReason`, `PostingSource` (CHAT, CSV_IMPORT, RECURRING, RECONCILIATION), `ObjectLens` (SETTLEMENT, TREATMENT, DECISION, EVIDENCE, FULL). Wiki: `decision-record`, `process-instance`, `safety-nets`, `context-assembly`. Commit `feat: domain enums`.
 
 ### Task 1.2: Money
 **Files:** `app/domain/money.py`, `tests/test_money.py`
@@ -141,7 +149,8 @@ def money(v: str | int | Decimal) -> Decimal:
 
 ### Task 1.4: Documents
 **Files:** `app/domain/documents.py`, `tests/test_documents.py`
-- [ ] 9 frozen dataclasses; Invoice has lines[] (desc, qty, rate, account, dims) + due_date + optional tax; Payment has deposit_account, method, applications[]; JournalEntry has N lines. Validation: required fields, positive amounts, JE lines ≥ 2. Commit `feat: document models`.
+- [ ] 9 frozen dataclasses; Invoice has lines[] (desc, qty, rate, account, dims) + due_date + optional tax; Payment has deposit_account, method, applications[]; JournalEntry has N lines. Validation: required fields, positive amounts, JE lines ≥ 2.
+- [ ] **Context seams (2026-07-30 realignment — nullable, free-capture only, but they freeze here):** every document gains `origin {type, ref}` (causation — a *different edge* from `ref`, which stays settlement-only) `evidence[]` and `process_refs[]`; Invoice lines gain `service_period {start, end}`; Invoice gains `delivered_at` / `delivery_channel`. Test: all default to None and no emitter reads them (they are context, not effect). Per-field required/optional column documented for the skill's capture rule. Wiki: `financial-object-model`, `invoice-artifact`, `evidence`. Commit `feat: document models`.
 
 ### Task 1.5: Emitters — the GL patterns
 **Files:** `app/domain/emitters.py`, `tests/test_emitters.py`
@@ -179,7 +188,7 @@ expect:
     - {account: "Accounts Receivable", credit: "1000.00", ref: INV-0001}
   open_balance: {INV-0001: "0.00"}
 ```
-- [ ] Runner parameterized over all files; `expect` supports `gl_lines`, `open_balance` (computed in Phase 1 by a test-helper ref-sum — the same arithmetic `v_open_items` implements in Phase 4), and optional `report_deltas` (asserted once Phase 4 lands; ignored before). Write the first 8 fixtures: invoice_post, invoice_edit (reversal+repost), invoice_void, partial_payment, overpayment_credit, processor_fee, transfer_not_pnl, owner_expense. Commit `test: scenario fixtures batch 1`.
+- [ ] Runner parameterized over all files; `expect` supports `gl_lines`, `open_balance` (computed in Phase 1 by a test-helper ref-sum — the same arithmetic `v_open_items` implements in Phase 4), and optional `report_deltas` (asserted once Phase 4 lands; ignored before). **Plus `provenance`, `decision`, `exceptions` and `policy_header` blocks (2026-07-30 realignment) — without them no fixture can express any provenance, decision or policy fact and the entire realignment ships with zero deterministic coverage. This schema must be right BEFORE the 25+ YAMLs below are written against it** (wiki: `testing-strategy`). Write the first 8 fixtures: invoice_post, invoice_edit (reversal+repost), invoice_void, partial_payment, overpayment_credit, processor_fee, transfer_not_pnl, owner_expense. Commit `test: scenario fixtures batch 1`.
 
 ### Task 1.9: Remaining catalog fixtures
 - [ ] retainer_to_unearned + apply_on_invoice, nsf_reopen, early_discount, bad_debt_writeoff, ar_ap_offset, sales_receipt, credit_note, vendor_credit, opening_balance_obe_plug, cross_month_correction, locked_period_rejected, **refund** (DR AR ref / CR Bank), **chargeback** (refund + fee), **owner_draw** (DR Owner's Draw / CR Bank), **bill_partial_payment**, **vendor_refund** (AP mirrors). Gate: all pass cent-exact — one YAML per scenario-catalog row, no omissions. Commit `test: scenario fixtures complete`.
@@ -192,7 +201,7 @@ expect:
 
 ### Task 2.1: Mongo core + indexes
 **Files:** `app/core/mongo.py`, `scripts/seed.py`, `tests/test_mongo.py` (mongomock-motor)
-- [ ] Collections: companies, contacts, documents, posting_records, counters, audit_log. Contact model includes **`track_1099` boolean on vendors** (feeds the 1099 report + packet). `ensure_indexes()`: unique (company_id, doc_number), (company_id, outbox.status), audit append-only (no update ops exposed). Commit `feat: mongo layer`.
+- [ ] Collections: companies, contacts, documents, posting_records, counters, audit_log, **policy_sets, process_instances, decisions, evidence_refs** (2026-07-30 realignment). Contact model includes **`track_1099` boolean on vendors** (feeds the 1099 report + packet). `ensure_indexes()`: unique (company_id, doc_number), (company_id, outbox.status), audit append-only (no update ops exposed), **(company_id, subject_ref) on audit_log and decisions — the edge that makes a decision path queryable rather than greppable; an append-only entry written without it never gains one**, (company_id, type, state) on process_instances, unique (company_id, type, idempotency_key) on process_instances. Commit `feat: mongo layer`.
 
 ### Task 2.2: Counters
 **Files:** `app/pipeline/counters.py`, `tests/test_counters.py`
@@ -207,17 +216,23 @@ expect:
   "doc_snapshot": {...}, "gl_lines": [...],          # amounts as strings
   "idempotency_key": ..., "status": "committed",
   "outbox": {"state": "pending", "attempts": 0, "row_range": None},
-  "audit": {"who": ..., "conversation_id": ..., "at": ...} }
+  "audit": {"who": ..., "conversation_id": ..., "at": ...},
+  # 2026-07-30 realignment — UNBACKFILLABLE. Not captured here means gone forever.
+  "provenance": {"approval_mode_at_post": ..., "approved_by": ..., "approval_decision_id": ...,
+                 "decided_by": ActorKind, "rule_id": ..., "policy_version": ...,
+                 "skill_version": ..., "source": PostingSource, "process_ref": ...} }
 ```
-- [ ] `post(doc, ctx)`: compose → reserve → single insert → audit (**deliberate divergence from wiki step 5: audit written at COMMIT, not FINALIZE — safer, the record exists even if projection lags; log this supersession at Task 9.4 wiki ingest**). **`ledger_version` is NOT bumped here** — it bumps in the drainer after a successful sheet append (FINALIZE, per wiki posting-pipeline step 5); bumping at COMMIT would let DuckDB cache a sheet that doesn't yet contain the txn. Crash-before-insert test: nothing anywhere. Commit `feat: commit step`.
+- [ ] `post(doc, ctx)`: compose → reserve → single insert → audit (**deliberate divergence from wiki step 5: audit written at COMMIT, not FINALIZE — safer, the record exists even if projection lags; log this supersession at Task 9.4 wiki ingest**). **`books_version` is NOT bumped here** — it bumps in the drainer after a successful sheet append (FINALIZE, per wiki posting-pipeline step 5); bumping at COMMIT would let DuckDB cache a sheet that doesn't yet contain the txn. (Renamed from `ledger_version` 2026-07-30: the COA and `Reconciliations` writers are bump sites too — see Task 3.4.) Crash-before-insert test: nothing anywhere. **Test that `provenance` is populated on every path (chat, import, recurring, reconciliation) — a null field here is a permanent data loss, not a TODO.** Commit `feat: commit step`.
 
 ### Task 2.4: Fake Sheets + ledger writer core + outbox drainer
 **Files:** `tests/fakes/fake_sheets.py`, `app/sheets/ledger_writer.py` (`append_txn`, `tail_check` — built HERE against the fake; Phase 3 adds real-API concerns), `app/pipeline/outbox.py`, `tests/test_outbox.py`
-- [ ] Drainer: scan `outbox.state=pending` ordered by txn_id → `append_txn` → mark appended + row_range → **bump `ledger_version`** (FINALIZE). **Tail-check first on every attempt** (last 50 rows contain txn_id → mark appended, don't re-append). Lifespan task + drain-on-startup. Failure injection: fake raises after write → retry → exactly one copy; assert ledger_version bumps only after successful append. Commit `feat: outbox drainer with tail-check`.
+- [ ] Drainer: scan `outbox.state=pending` ordered by txn_id → `append_txn` → mark appended + row_range → **bump `books_version`** (FINALIZE). **Tail-check first on every attempt** (last 50 rows contain txn_id → mark appended, don't re-append). Lifespan task + drain-on-startup. Failure injection: fake raises after write → retry → exactly one copy; assert books_version bumps only after successful append.
+- [ ] **Generalize the outbox out of the PostingRecord (2026-07-30 realignment).** It is currently a subdocument of a posting, so it cannot carry the non-posting sheet writes v1 now needs — reconciliation clear rows, archive copies, close exports. Make it a standalone durable queue with the same at-least-once + dedupe guarantees; the PostingRecord holds a reference. Wiki: `sheets-layer`. Commit `feat: outbox drainer with tail-check`.
 
 ### Task 2.5: Approval flow
 **Files:** `app/pipeline/posting.py` (draft path), `tests/test_approval.py`
-- [ ] `create_draft`, `approve(doc_id)` (re-runs compose at approval time), `reject`, `approve_all`. Tests: approval_mode none skips draft; void/edit-posted/unlock ALWAYS draft-gated; draft approved after lock_period → ComposeError. Commit `feat: approval flow`.
+- [ ] `create_draft`, `approve(doc_id)` (re-runs compose at approval time), `reject`, `approve_all`. Tests: approval_mode none skips draft; void/edit-posted/unlock ALWAYS draft-gated; draft approved after lock_period → ComposeError.
+- [ ] **Approval emits an `APPROVAL` DecisionRecord, not a status flip (2026-07-30 realignment):** approver, rule, `reason_verbatim`, evidence, alternatives, `decided_at`. **`preview_hash` is the load-bearing part** — the draft stores a hash of the exact GL lines previewed; because compose re-validates at approval time, a mismatch means the human consented to one thing and the ledger recorded another. Test: mutate a rate/COA/duplicate between preview and approve → raises `PREVIEW_DRIFT`, re-presents, does NOT post. This must exist at the first approval ever written or the claim is unprovable forever. Wiki: `approval-flow`, `decision-record`. Commit `feat: approval flow`.
 
 ### Task 2.6: Period locking
 **Files:** `app/domain/locking.py` (extend), `tests/test_locking.py`
@@ -225,7 +240,11 @@ expect:
 
 ### Task 2.7: Books state (onboarding)
 **Files:** `app/pipeline/posting.py`, `tests/test_books_state.py`
-- [ ] Company carries `books_state: incomplete|complete`; flips to complete when the opening-balance JE posts; reports (Phase 4) and `get_books_status` (Phase 6) surface a warning banner while incomplete (wiki onboarding-opening-balances #5). Commit `feat: incomplete-books state`.
+- [ ] Company carries `books_state: incomplete|complete`; reports (Phase 4) and `get_books_status` (Phase 6) surface a warning banner while incomplete (wiki onboarding-opening-balances #5). **Fix (2026-07-30 realignment): the flip depends on the `ONBOARDING` ProcessInstance completing — opening JE AND historical open documents — not on the JE alone.** The opening JE by rule can never contain AR/AP, so flipping on it drops the banner precisely while the AR/AP migration is still outstanding. Test: opening JE posted + open documents pending → still `incomplete`. Commit `feat: incomplete-books state`.
+
+### Task 2.8: Process, decision, policy and evidence stores (2026-07-30 realignment)
+**Files:** `app/core/process.py`, `app/core/decisions.py`, `app/domain/policy.py`, `tests/test_process.py`, `tests/test_policy.py`
+- [ ] Generic **domain-blind** stores (principle #1 — they must know nothing about accounting): `ProcessInstance` (counter-minted human-quotable ids — `CLOSE-2026-07`, not a UUID, per the document-model numbering doctrine; idempotency key so re-uploading the same statement does not mint a second run), `DecisionRecord` (one shape, all `DecisionKind`s), `EvidenceRef` (tenant-scoped: a `DRIVE_FILE` must resolve inside this company's folder registry, an arbitrary id is rejected). `policy.py` is PURE: `resolve(company, as_of_date) -> PolicySet` — **as-of a date, never as-of now**; statutory thresholds effective-dated by tax year. Tests: process idempotency; a decision with no `subject_ref` is rejected; policy resolution for a date before/after a change returns different sets; a foreign-company evidence ref is rejected. Wiki: `process-instance`, `decision-record`, `policy-set`, `evidence`. Commit `feat: process, decision and policy stores`.
 
 ---
 
@@ -239,7 +258,7 @@ expect:
 
 ### Task 3.2: Provisioning
 **Files:** `app/sheets/provision.py`, `tests/test_provision.py` (against fake; one real smoke)
-- [ ] **All files created in Shared Drives** (SA as Manager member; `shared_drive_id` in the provisioning registry — wiki sheets-layer storage architecture). `ensure_company_folder`, `ensure_month_file(company, yyyy_mm)` (lazy, from template: **protected TOTALS row on top** with `=SUM(...)` formulas + difference cell, header row from GLColumn enum below it, frozen), share view-only with user email, register ids in Mongo. Never resolve by name at runtime. Commit `feat: drive provisioning`.
+- [ ] **All files created in Shared Drives** (SA as Manager member; `shared_drive_id` in the provisioning registry — wiki sheets-layer storage architecture). `ensure_company_folder`, `ensure_month_file(company, yyyy_mm)` (lazy, from template: **protected TOTALS row on top** with `=SUM(...)` formulas + difference cell, header row from GLColumn enum below it, frozen), share view-only with user email, register ids in Mongo. Never resolve by name at runtime. **Plus `ensure_reconciliations_sheet(company)` (2026-07-30 realignment) — a third per-company sheet (txn_id, statement_period, rec_id, cleared_at) written by APPEND only; `cleared` is not a GL column and never a cell edit, because the sheets layer has no method for mutating an existing row and the tail-check cannot make one effectively-once.** Wiki: `sheets-layer`, `general-ledger-sheet`. Commit `feat: drive provisioning`.
 
 ### Task 3.3: Ledger writer — real-API concerns
 **Files:** `app/sheets/ledger_writer.py` (extend the Phase-2 core), `tests/test_ledger_writer.py`
@@ -247,7 +266,7 @@ expect:
 
 ### Task 3.4: COA writer + real smoke
 **Files:** `app/sheets/coa_writer.py`, `tests/test_real_smoke.py` (@real_google)
-- [ ] Full COA rewrite on change. Smoke: fresh test company end-to-end → assert via API read-back. Commit `feat: coa writer + real smoke`.
+- [ ] Full COA rewrite on change. **The rewrite MUST bump `books_version` (2026-07-30 realignment) — this is a live bug in the current design, not a new capability: DuckDB caches the `accounts` table too, and `ledger_version` bumped only on GL append, so a `tax_line` edit, rename or deactivation served stale account data until an unrelated posting happened.** Test: `update_account` → cached connection is invalidated without any posting. Smoke: fresh test company end-to-end → assert via API read-back. Commit `feat: coa writer + real smoke`.
 
 ---
 
@@ -257,11 +276,11 @@ expect:
 
 ### Task 4.1: Loader + typing
 **Files:** `app/analytics/loader.py`, `tests/test_loader.py`
-- [ ] batchGet all month sheets + COA → arrow → duckdb `gl_lines`, `accounts`; DECIMAL(18,2)/DATE enforced; any parse failure raises `LedgerCorruptionError` (test with a poisoned fixture). Commit `feat: duckdb loader`.
+- [ ] batchGet all month sheets + COA **+ the company-root `Reconciliations` sheet** → arrow → duckdb `gl_lines`, `accounts`, `rec_clears`; DECIMAL(18,2)/DATE enforced; any parse failure raises `LedgerCorruptionError` (test with a poisoned fixture). Commit `feat: duckdb loader`.
 
 ### Task 4.2: Cache
 **Files:** `app/analytics/cache.py`, `tests/test_cache.py`
-- [ ] `{company: (conn, ledger_version)}`, rebuild on version mismatch, LRU cap from config. Commit `feat: analytics cache`.
+- [ ] `{company: (conn, books_version)}`, rebuild on version mismatch, LRU cap from config. **Test both bump triggers: a GL append AND a COA rewrite each invalidate the cache** (the COA half is the bug fix from Task 3.4; no existing test layer catches it because they all build fresh connections). Commit `feat: analytics cache`.
 
 ### Task 4.3: View stack
 **Files:** `app/analytics/views.py`, `tests/test_views.py`
@@ -269,7 +288,8 @@ expect:
 
 ### Task 4.4a: Core statements
 **Files:** `app/analytics/reports.py`, `tests/test_reports_core.py`
-- [ ] profit_and_loss (range, basis toggle, **monthly columns**, **prior-period/prior-year compare**, by class/customer), balance_sheet (as-of; RE computed), trial_balance, account_ledger (running balance). Reports carry the `books_state` warning banner while incomplete (Task 2.7). Every report = parameterized SELECT over views only (grep-test: no raw table refs outside views.py except loader). Commit `feat: core statements`.
+- [ ] profit_and_loss (range, basis toggle, **monthly columns**, **prior-period/prior-year compare**, by class/customer), balance_sheet (as-of; RE computed), trial_balance, account_ledger (running balance). Reports carry the `books_state` warning banner while incomplete (Task 2.7). Every report = parameterized SELECT over views only (grep-test: no raw table refs outside views.py except loader).
+- [ ] **Policy header on every report (2026-07-30 realignment):** basis, `policy_version`, ruleset versions (cash-basis R1–R9 id, matching), period, books_state — resolved **as-of the report's period, not as-of now**. A report without a header is a number with no meaning; `compliance` already required this of the sales-tax report and it generalizes. Test: the same period rendered under two policy versions produces two different headers. Wiki: `policy-set`. Commit `feat: core statements`.
 
 ### Task 4.4b: Operational reports
 **Files:** `app/analytics/reports.py`, `tests/test_reports_ops.py`
@@ -303,21 +323,22 @@ expect:
 
 ### Task 5.4: Bank reconciliation (the trust floor — wiki `bank-reconciliation`)
 **Files:** `app/domain/reconciliation.py`, `app/pipeline/posting.py` (rec object persistence), `app/analytics/reports.py` (rec + outstanding-items reports), `tests/test_reconciliation.py`
-- [ ] Rec object per money account × statement period: statement rows matched to posted GL lines (cleared flags), outstanding-items report (uncleared book-side lines), rec history stored; unexplained differences post ONLY to Reconciliation Discrepancies (verify_books flags nonzero); unmatched statement rows feed the import draft queue (same loop as 5.3b). Close ritual step 2 upgrades to statement rec when a statement exists (balance-check = fallback). Cent-exact rec fixtures. Commit `feat: bank reconciliation`.
+- [ ] **A `REC_RUN` ProcessInstance** per money account × statement period (2026-07-30 realignment — replaces the ad-hoc "Rec object"): statement rows matched to posted GL lines, **each pairing recorded as a `CLEARING` DecisionRecord so the rec is re-performable** (a bare `cleared` boolean loses the pairing that produced it), cleared state appended to the Reconciliations sheet (Task 3.2), outstanding-items report (uncleared book-side lines), rec history = the process instances themselves; unexplained differences post ONLY to Reconciliation Discrepancies (verify_books flags nonzero); statement rows are `EvidenceKind.STATEMENT_ROW` at zero capture cost; unmatched statement rows feed the import draft queue — which is an `IMPORT_RUN` process instance, making "reconciliation and import are the same loop" literally true (one object, two type entries). Close ritual step 2 upgrades to statement rec when a statement exists (balance-check = fallback). Cent-exact rec fixtures. Commit `feat: bank reconciliation`.
 
 ---
 
 ## Phase 6 — MCP surface (first dogfood)
 
-**Exit gate (MILESTONE):** a real test company's books kept entirely from Claude via API key — invoice → payment → reports, links to real sheets.
+**Exit gate (MILESTONE):** a real test company's books kept entirely from Claude via API key — invoice → payment → reports, links to real sheets. **Plus (2026-07-30 realignment): ask "why is this invoice still outstanding?" and get an assembled, correct answer that names what it does not know.** The gate was write-path only; a system that can post perfectly and explain nothing would have passed it.
 
 ### Task 6.1: API-key auth + tenant
 **Files:** `app/core/auth.py`, `app/tools/_shared.py`, `tests/test_auth.py`
-- [ ] Per-user API keys in Mongo (hashed); middleware resolves key → user → company; tools never accept tenant args (grep-test over tool signatures). Commit `feat: api-key auth`.
+- [ ] Per-user API keys in Mongo (hashed); middleware resolves key → user → company; tools never accept tenant args (grep-test over tool signatures). **Extend the isolation rule (2026-07-30 realignment): the grep-test proves no tool takes a `company_id`, but proves nothing about a tool taking `ref="INV-0042"` — document numbers are unique PER COMPANY, not globally, and the new context reads are the first surfaces that accept a caller-supplied id. Every context read filters `{company_id, ref}`; test asserts a foreign ref returns not-found, not data.** Wiki: `context-assembly`. Commit `feat: api-key auth`.
 
 ### Task 6.2: Audit decorator + renderer
 **Files:** `app/core/audit.py`, `app/core/renderer.py`, `tests/test_renderer.py`
-- [ ] `@audited` wraps every tool (who/args/duration/result-size/conversation), append-only. Renderer: CSV-style tables under token budget — drop zero rows, collapse depth, explicit truncation marker (port FinBoard mcp-server pattern). Commit `feat: audit + renderer`.
+- [ ] `@audited` wraps every tool (who/args/duration/result-size/conversation), append-only, **plus the `subject_ref` edge on every entry (2026-07-30 realignment) — an append-only entry written without it never gains one, and without it a decision path can be grepped but never queried.** Renderer: CSV-style tables under token budget — drop zero rows, collapse depth, explicit truncation marker (port FinBoard mcp-server pattern).
+- [ ] **Section renderer alongside the table renderer.** All three table-budget levers are row operations, so a dossier that exceeds the budget gets truncated by dropping the OLDEST audit rows — i.e. the original approval, the most load-bearing fact in the answer — while a marker at the bottom satisfies "never silently truncate" and the agent explains confidently from a mutilated trail. Contract: an ordered list of named sections, each with a minimum guaranteed allocation and its own `(N earlier entries not shown)` marker; sections are dropped whole and named, never thinned silently. Wiki: `context-assembly`. Commit `feat: audit + renderer`.
 
 ### Task 6.3a: Tools — context, COA, contacts
 **Files:** `app/tools/{context,coa,contacts}.py`, `app/main.py`, `tests/test_tools_context.py`
@@ -326,6 +347,11 @@ expect:
 ### Task 6.3b: Tools — documents, approval, reports, imports
 **Files:** `app/tools/{sales,purchases,ledger,approval,reports,imports}.py`, `tests/test_tools_documents.py`
 - [ ] create_invoice, record_payment (matching), create_sales_receipt, create_credit_note; record_bill, pay_bill, create_vendor_credit; post_journal_entry, record_transfer, record_owner_expense; list_drafts/approve/reject/approve_all; all report tools + query_books + verify_books (**stub until 7.3; final home `tools/context.py`**); import_bank_csv, export_accountant_packet (stub until 7.2). Every write returns its sheet-range link. One happy-path test per tool. Commit `feat: tools batch 2`.
+
+### Task 6.3c: Tools — context assembly (2026-07-30 realignment)
+**Files:** `app/reads/{objects,trails}.py`, `app/tools/context.py`, `tests/test_context_assembly.py`
+- [ ] `get_object(ref, lens)` — assembles the financial object from Mongo per `ObjectLens` (SETTLEMENT / TREATMENT / DECISION / EVIDENCE / FULL), joining document + ledger facts + process refs + decision path + policy in force + evidence, rendered through the section renderer. `get_audit_trail(ref)` over the `subject_ref` edge. `attach_evidence(subject_ref, evidence)`. `list_processes` / `get_process(process_id)`.
+- [ ] **Read-only, no new truth store, no snapshots.** Tests: the two founder-source questions end-to-end on a fixture ledger — "why is this still outstanding" (SETTLEMENT) and "why did this recognize when it did" (TREATMENT); **a null field renders as "not recorded", never as a fact** (a null `delivered_at` must not read as "not delivered"); out-of-scope context returns an explicit "not applicable in this scope" rather than an empty section; foreign-company ref → not-found (Task 6.1). Wiki: `context-assembly`, `financial-object-model`. Commit `feat: context assembly tools`.
 
 ### Task 6.4: Skill v0 + dogfood
 **Files:** `skill/SKILL.md`
@@ -343,11 +369,13 @@ expect:
 
 ### Task 7.2: Accountant packet (expanded scope 2026-07-18)
 **Files:** `app/artifacts/accountant_packet.py`, tool in `app/tools/reports.py`, `tests/test_packet.py`
-- [ ] One tool → bundle in Drive folder: TB, GL, 1099 CSV (method-excluded), **by-tax-line grouping** (Schedule C), **accrual-to-cash bridge** (ΔAR/ΔAP/Δunearned/non-cash), open AR/AP item detail with refs, customer/vendor/project masters, **categorization review** (account choice + memo_verbatim), approval-mode-per-period disclosure + auto-posted flags, tolerance write-off list, fixed-asset additions, audit log export. Commit `feat: accountant packet`.
+- [ ] One tool → bundle in Drive folder: TB, GL, 1099 CSV (method-excluded, **$600 threshold resolved as-of the report's tax year, never as-of now**), **by-tax-line grouping** (Schedule C, using the `tax_line` map **effective for that year** — a destructive COA rewrite would otherwise regroup a filed return under today's map), **accrual-to-cash bridge** (ΔAR/ΔAP/Δunearned/non-cash), open AR/AP item detail with refs, customer/vendor/project masters, **categorization review**, approval-mode-per-period disclosure + auto-posted flags, tolerance write-off list, fixed-asset additions, audit log export.
+- [ ] **The three previously-undeliverable sections become filters over `PostingRecord.provenance` (2026-07-30 realignment)** — categorization review (`decided_by=AGENT` + rule + memo_verbatim), tolerance write-off list (`rule_id=RULE_TOLERANCE_WRITEOFF`, previously indistinguishable from a real bank fee), approval disclosure (`approval_mode_at_post`, previously derivable only by replaying an unindexed audit stream). Plus: **the packet and any explicitly exported report are retained as immutable timestamped copies in the Drive folder with their policy header**, and the close writes the Tier-2 self-sufficiency export (CloseRun, decision trail, policy header, evidence index) into the month folder. Wiki: `policy-set`, `three-store-architecture`. Commit `feat: accountant packet`.
 
 ### Task 7.3: Close ritual + nudges
 **Files:** `app/tools/context.py` (verify_books, close checklist), `app/pipeline/nudges.py`
-- [ ] `verify_books` (TB ties, drafts pending, unapplied, uncategorized, **nonzero OBE, stale unearned, aged unapplied credits, nonzero Reconciliation Discrepancies**); close flow prompts statement rec (Task 5.4) with balance tie-out as no-statement fallback; nudge query: money account with no lines >14 days → surfaced in get_books_status. Commit `feat: close ritual + nudges`.
+- [ ] `verify_books` (TB ties, drafts pending, unapplied, uncategorized, **nonzero OBE, stale unearned, aged unapplied credits, nonzero Reconciliation Discrepancies**); close flow prompts statement rec (Task 5.4) with balance tie-out as no-statement fallback; nudge query: money account with no lines >14 days → surfaced in get_books_status (threshold from the versioned policy set, not a literal — the wiki carried two spellings of this one number).
+- [ ] **The close is a `CLOSE_RUN` ProcessInstance (2026-07-30 realignment)** with per-step state and every exception carrying an `ExceptionKind` + `Disposition` (OPEN / RESOLVED / ACKNOWLEDGED) with actor and reason — today the profession's core control ritual is a chat checklist that persists one scalar, and the adopted v2 accountant-seat thesis needs close state to be a queryable object. Unlock becomes a bounded `AMENDMENT` process instance (today reopening one month mutates a scalar that unlocks every month after it, with nothing bounding the amendment). Wiki: `process-instance`, `period-locking-month-close`, `safety-nets`. Commit `feat: close ritual + nudges`.
 
 ---
 
@@ -381,8 +409,8 @@ expect:
 **Exit gate:** Golden Company e2e cent-exact vs hand-verified expected file; rate limits on; Docker images build; skill eval scenarios pass.
 
 ### Task 9.1a: Golden Company script + expected files
-**Files:** `tests/fixtures/golden_company/script.yaml` (~200 txns exercising every scenario), `expected/{trial_balance.csv, pnl_accrual.csv, pnl_cash.csv, bs.csv, aging.csv}`
-- [ ] Author the fictional solopreneur year and hand-verify the expected files (this is accounting work — budget it as its own sitting; verify TB ties by hand before committing). Commit `test: golden company fixture`.
+**Files:** `tests/fixtures/golden_company/script.yaml` (~200 txns exercising every scenario), `expected/{trial_balance.csv, pnl_accrual.csv, pnl_cash.csv, bs.csv, aging.csv, context.yaml}`
+- [ ] Author the fictional solopreneur year and hand-verify the expected files (this is accounting work — budget it as its own sitting; verify TB ties by hand before committing). **`context.yaml` is hand-verified too (2026-07-30 realignment): for a chosen invoice, the exact facts `get_object(ref, lens)` must return per lens AND the exact set it must report as not-recorded / not-applicable. Without it every one of the eight existing layers can pass while the system is unable to explain anything** — they are all write-path or ledger-arithmetic assertions. Commit `test: golden company fixture`.
 
 ### Task 9.1b: Golden Company runner
 **Files:** `tests/test_golden_company.py`
@@ -392,7 +420,8 @@ expect:
 - [ ] Rate-limit middleware (auth 30/min IP, MCP 120/min token); request logging with conversation id; Dockerfile (server) + web build; compose prod profile. Commit `chore: hardening + docker`.
 
 ### Task 9.3: Skill eval + final skill
-- [ ] Paired eval loop: scripted conversations (ambiguous payment → asks; transfer never income; retainer never early income; CSV import flow) against live agent; iterate skill until pass. Commit `feat: skill v1`.
+- [ ] Paired eval loop: scripted conversations (ambiguous payment → asks; transfer never income; retainer never early income; CSV import flow) against live agent; iterate skill until pass.
+- [ ] **Explanation + capture evals (2026-07-30 realignment):** the skill and this gate are entry-shaped throughout, so nothing today would detect that the system cannot answer a "why" question. Add: "why is this invoice still outstanding" routes to the SETTLEMENT lens and states what is not recorded rather than guessing; "why did this recognize then" routes to TREATMENT; **and the capture rule holds — "I got paid $1,400 from Acme" must NOT turn into a five-question interrogation** (free capture mandatory, paid capture opt-in or retroactive). Wiki: `the-skill`, `context-assembly`. Commit `feat: skill v1`.
 
 ### Task 9.4: Docs + wiki sync
 - [ ] Move `llm-wiki/` into the repo; README quickstart; ingest "as-built" deltas into the wiki (any place implementation diverged from design gets a logged supersession). Commit `docs: v1`.
@@ -402,3 +431,5 @@ expect:
 ## Deferred by design (do NOT build in v1)
 
 **v1.1 committed fast-follow:** recurring/retainer auto-billing. **v1.5:** Stripe payment links, billable expenses, sendable customer-statement **artifact** (the open-items *report* ships in v1, Task 4.4b), 1099 completions (W-9/TIN, NEC/MISC, corp exemption), mid-year historical backfill. **v2 thesis (adopted):** accountant seat — multi-company role, per-user audit attribution, cross-client console, REST read API. **Later:** Plaid feeds, receipts OCR, time tracking, mileage, quarterly tax estimates, payroll, multi-currency. Pricing must be **announced** at launch (business decision, no billing code).
+
+**From the process-aware object model — decided out, not overlooked (2026-07-30):** ASC-606 performance obligations and revenue schedules; contract / sales-order / subscription objects (the `origin` field is the seam; recurring billing is v1.1); `billing_method`, rate cards and list-price-and-override capture (no pricing engine, so "why is this 15% lower than expected?" is out of scope by construction); multi-party approval routing (there is no second party — a `DecisionRecord`, not a workflow engine); collections and dispute workflows; receipt substantiation and OCR; **and a server-side attention layer — attention is the skill plus the `lens` parameter, never a question classifier in the server ("no LLM inside the server" is load-bearing).** Full reasoning in wiki `v1-scope`.

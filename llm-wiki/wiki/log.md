@@ -1,3 +1,12 @@
+---
+type: synthesis
+created: 2026-07-17
+modified: 2026-07-30
+status: verified
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md]
+tags: [log, provenance]
+---
+
 # Log (append-only)
 
 ## [2026-07-17] ingest | Product design discussion → design doc v1
@@ -79,7 +88,50 @@
 - Pages updated: v1-scope (rec + grid + packet + COA/verify additions into v1; NEW v1.1 section = recurring billing; 1099 completions + backfill → v1.5; v2 thesis = accountant seat), platform (batch grid = the one ledger-UI exception), chart-of-accounts (tax_line field; Notes Payable, Interest Expense, Reconciliation Discrepancies; principal/interest skill rule), safety-nets (verify_books additions), reports-and-analytics (expanded packet contents), professional-review-findings (open calls → decided), index
 - Plan updated: new Task 5.4 (bank reconciliation) + Task 8.4 (batch review grid); Tasks 1.3/7.2/7.3 expanded; deferred section restructured (v1.1/v1.5/v2 thesis/later)
 
+## [2026-07-30] ingest | Process-aware financial objects (founder) → object-model realignment
+
+- Source: `raw/2026-07-30-process-aware-objects.md` — founder architecture position, framed through the invoice. Directive: "review this and use this ideology and update full stack which conflicts with that."
+- Method: six-lens conflict audit (object model, workflow-as-object, decision trail, policy versioning, retrieval-as-attention, adversarial scope counter-lens) over all 30 wiki pages, all raw sources and the implementation plan; every candidate adversarially verified against file text; completeness critic pass. **62 candidates → 32 refuted → 27 verified conflicts + 15 second-order findings.**
+- Pages created (all `status: draft`): financial-object-model, process-instance, decision-record, evidence, policy-set, context-assembly
+- Pages updated: three-store-architecture, product-vision, company-object, duckdb-layer, dates-and-timezones, general-ledger-sheet, sheets-layer, bank-reconciliation, period-locking-month-close, document-model, approval-flow, matching-engine, pairing-and-matching, invoice-artifact, onboarding-opening-balances, mcp-tool-surface, reports-and-analytics, safety-nets, compliance, chart-of-accounts, the-skill, testing-strategy, v1-scope, index
+
+### GOVERNANCE — read before treating any of this as decided
+
+`CLAUDE.md` defines `verified` as "confirmed by the founder in design discussion **and** present in a raw source". The source is founder-authored; the ~20 design decisions derived from it are **not**. Therefore: new pages are `draft`, and every new or changed claim on an existing page carries the inline marker **(proposed 2026-07-30)** so the founder can confirm them in one pass. Precedent: `raw/2026-07-18-scope-calls.md` was the founder confirming a review's recommendations *before* pages moved. **The supersession rule is also explicitly narrowed here: recency does not outrank correctness.** This source does NOT override CPA-validated accounting decisions the founder never revisited — cash-basis R1–R9, the AR/AP opening double-count rule, the 1099 method exclusion, deterministic matching.
+
+### CONTRADICTIONS FLAGGED (not silently overwritten)
+
+1. **`three-store-architecture`: "Mongo = cache, ledger wins."** Correct for money, wrong for meaning. Narrowed to two truth domains — effect (ledger, canonical for monetary/settlement facts) vs context (Mongo, canonical and append-only, never a cache). Mongo remains a cache of *derived ledger* facts (invoice status) and the ledger still wins there.
+2. **`invoice-artifact`: "line-item prose isn't accounting data."** True of description/qty/rate; false of `service_period`, which is accounting context. Scope-corrected, not reversed.
+3. **`general-ledger-sheet`: "The GL shows the full story."** False today — no column links a reversal to what it reverses. Fixed by admitting `reverses_txn_id` under a new column-admission rule.
+4. **`bank-reconciliation`: GL lines "carry `cleared` status."** Unimplementable as written: the sheets layer has one primitive (append, never edit), so a `cleared` cell update has no method, violates append-only, and cannot be made effectively-once by the tail-check. Superseded by append rows to a `Reconciliations` sheet.
+5. **`onboarding-opening-balances`: `books_state` flips `complete` on the opening JE**, which by rule 5 can never contain AR/AP — the banner drops while the migration is still incomplete. Flip now depends on the onboarding process completing.
+6. **`period-locking-month-close`: "every rendering a banker or accountant may have seen survives."** Mechanism only archives the GL sheet; outsiders see P&Ls, agings and packets. Extended to retained exported renderings.
+7. **`reports-and-analytics`: three packet sections were not producible** — approval-mode-per-period disclosure (derivable only by replaying an unindexed audit stream), the tolerance write-off list (indistinguishable from real fee/discount lines), and categorization review (specified over `memo_verbatim`, captured only on the two matching tools). Fixed by `PostingRecord.provenance`.
+8. **`approval-flow`: the approved preview is not provably the posted lines** — compose re-validates at approval time. Fixed by `preview_hash` + `PREVIEW_DRIFT`.
+9. **LIVE BUG (no ideology needed): `ledger_version` bumps only on a GL append**, but DuckDB also caches the `accounts` table and the COA is "fully rewritten on change" with no bump. A `tax_line` edit, rename or deactivation serves stale data until an unrelated posting happens. Renamed `books_version`; bumps on any change to anything DuckDB caches.
+
+### REFUTED — do not resurrect without new file evidence
+
+Enterprise machinery correctly refused: contract/order objects, revenue schedules, collections/dispute workflows, multi-party approval routing, a server-side attention classifier, receipt substantiation. Already-satisfied claims wrongly flagged: derived status and point-in-time balances already answer the "current state" and "derived facts" buckets better than the source asks; the cash/accrual toggle is already one object read two ways; `query_books` already exposes prior treatment over `gl_lines`. Recorded in `v1-scope` so the next reviewer does not burn a cycle rediscovering them.
+
 ## [2026-07-18] maintenance | Redundancy + contradiction sweep
 - Contradictions removed: period-locking step 2 taught balance-check-with-plug (now: statement rec per bank-reconciliation, fallback tie-out posts only to Reconciliation Discrepancies); safety-nets "poor man's bank reconciliation" bullet deleted; product-vision "never renders a ledger" now names the one grid exception; three-store-architecture aligned to Shared Drives + archive/ folder; mcp-tool-surface packet description updated (was stale TB+GL+1099-only) + reconcile_account added; onboarding duplicate step numbering fixed
 - Redundancy removed: v1-scope rewritten as single authoritative cut (accretion layers folded); buyer-panel-findings scope list → pointer to v1-scope; dated "(added 2026-07-18…)"/"SUPERSEDES" annotations stripped from 10 pages (provenance lives in frontmatter sources + this log); auth-wiring supersedes-footnote removed; index Implementation stubs replaced
 - Coherence added: the-skill now carries principal/interest + reconciliation flows; cash-basis history note moved to log; original features/ design doc marked SUPERSEDED with pointer to wiki
+
+## [2026-07-30] maintenance | Coherence + lint sweep after the parallel object-model update
+
+- Trigger: six new pages and 24 edited pages were written by five agents that could not see each other's work. Links and orphans were clean; duplication and two contradictions were not.
+- **Single-owner assignments made explicit** (one concept, one page): `books_version` → duckdb-layer · capture rule → the-skill · null-renders-as-"not recorded" → context-assembly · `provenance` → decision-record · `preview_hash`/`PREVIEW_DRIFT` → approval-flow · policy header + retained renderings + statutory/operational thresholds → policy-set · `ExceptionKind` → safety-nets · column-admission rule → general-ledger-sheet · `ref` vs `origin` → pairing-and-matching · tenant rule for caller-supplied refs → mcp-tool-surface · audit `subject_ref` edge → safety-nets · ledger-vs-context read boundary → duckdb-layer · "approval is not a workflow" → process-instance · packet-section diagnosis → reports-and-analytics · decided-out register → v1-scope. Every other mention reduced to a one-line consequence plus a link.
+- **Contradictions fixed:** `ledger_version` survived on posting-pipeline, sheets-layer, reports-and-analytics and index → all now `books_version`; three-store-architecture placed the `Reconciliations` sheet in the month folder while sheets-layer placed it at the company root (company root wins — it carries a `statement_period` column); duckdb-layer called its table `reconciliations` and hedged it as conditional while sheets-layer named it `rec_clears` and committed to it (`rec_clears`, committed); index still described rec as "cleared flags".
+- posting-pipeline had been missed entirely by the parallel pass despite three pages pointing at it for COMMIT-time `provenance` and `PREVIEW_DRIFT` — source, `modified`, marker and the two hooks added.
+- Frontmatter added to index and log (lint rule requires it on every page; they were exempt only from the orphan rule).
+- **One duplication left undecided and escalated:** pairing-and-matching's 6-rule ordered list vs matching-engine's 7-rule cascade — pre-existing (both 2026-07-17), CPA-validated content, not agent-introduced. Resolved separately below on founder instruction.
+
+## [2026-07-30] decision | Matching rules: one cascade, one page (founder-approved)
+
+- **Contradiction, not granularity.** The two lists had already drifted three ways, all provable from file text: (1) `matching-engine` rule 1 **"Invoice cited"** — the user naming INV-0042 — was **absent** from pairing-and-matching, and since both lists were explicitly ordered ("In order" / "first hit wins"), the missing rule was the highest-precedence one, so implementing from that page would override the user's own explicit instruction; (2) the subset **tie-break disagreed** — `oldest-first` vs `prefer fewest, then oldest`: on open invoices of $100/$400/$500 a $500 payment settles `{$100,$400}` under one and `{$500}` under the other, producing different refs, different aging and a different cash-basis composition (R4 recognizes pro-rata *per settled document*); (3) **confidence and ambiguity-as-an-outcome** — the "return ALL candidates and ask the user" safety rule — existed only on matching-engine, so the other page read as "always propose", i.e. always guess.
+- Why it mattered beyond tidiness: the plan states "where this plan and the wiki disagree, **the wiki wins**", which assumes the wiki gives one answer. Both pages were `status: verified` and gave two. (Plan Task 5.1 does cite matching-engine, so live risk was low; the exposure was the next edit to either page going uncaught.)
+- **Resolution:** pairing-and-matching's ordered list → an **unordered outcome table** ("treatments, not a cascade"), keeping every journal entry verbatim — retainer `DR Bank / CR Unearned Revenue (customer, project)` and `DR Unearned Revenue / CR AR ref` with "income never recognized early" (R6), the overpayment→unapplied-credit treatment, partial-remainder-stays-open, no-context→listed credit. **[[matching-engine]] is now the sole owner of precedence, tie-breaks, confidence and ambiguity.** The cited-invoice rule is correctly absent from the outcome table: it is a *selection* rule, not a distinct ledger outcome — which is exactly why the outcome/precedence split is the right seam.
+- **No accounting changed.** Zero CPA-validated treatments were altered, reworded or dropped; only the ordering framing was removed. Verified: both retainer JEs, the R6 claim, the overpayment treatment and the universal ref rule all still present; no numbered rule list remains on pairing-and-matching; matching-engine still carries all 7; all links resolve.

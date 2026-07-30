@@ -1,9 +1,9 @@
 ---
 type: entity
 created: 2026-07-17
-modified: 2026-07-17
+modified: 2026-07-30
 status: verified
-sources: [raw/2026-07-17-design-doc.md]
+sources: [raw/2026-07-17-design-doc.md, raw/2026-07-30-process-aware-objects.md]
 tags: [gl, sheets, append-only]
 ---
 
@@ -13,11 +13,26 @@ tags: [gl, sheets, append-only]
 
 ## Columns
 
-`txn_id`, `date`, `type` (document type or Reversal — [[document-model]]), `ref`, `account_number`/`account_name`, `debit`/`credit`, `customer`/`project`/`vendor`/`class`/`location` ([[dimensions]]), `due_date` (**only on AR/AP lines of invoice/bill postings** — makes aging computable from the sheet alone), `memo`, `posted_at`/`posted_by`.
+`txn_id`, `date`, `type` (document type or Reversal — [[document-model]]), `reverses_txn_id` (**proposed 2026-07-30** — Reversal lines only, blank elsewhere), `ref`, `account_number`/`account_name`, `debit`/`credit`, `customer`/`project`/`vendor`/`class`/`location` ([[dimensions]]), `due_date` (**only on AR/AP lines of invoice/bill postings** — makes aging computable from the sheet alone), `line_reason` (**proposed 2026-07-30** — machine-set `LineReason` enum), `memo`, `posted_at`/`posted_by`.
 
 - Sorted by date then txn_id; protected `TOTALS` row on top (debits, credits, difference — always 0.00, human-glanceable balance proof).
 - Names not ids (sheets are for humans); deliberately denormalized — DuckDB loads 1:1, joins only [[chart-of-accounts]].
 - No running-balance column (the `account_ledger` report provides it — [[reports-and-analytics]]).
+- The set is an **ordered enum** (`GLColumn`, principle #7) and a locked month's sheet is immutable forever — admitting a column is effectively irreversible. **(proposed 2026-07-30)**
+
+## The column-admission rule (proposed 2026-07-30)
+
+> A field earns a GL column **if and only if** a competent human reading the Drive folder with no software running cannot correctly interpret the ledger without it. Everything else is Mongo provenance ([[financial-object-model]]).
+
+Applied once, here, publicly: six separate findings each proposed columns, and nine columns each justified on their own page would destroy the human-legible ledger the buyer panel actually liked ([[buyer-panel-findings]]).
+
+| Field | Verdict | Why |
+|---|---|---|
+| `reverses_txn_id` | **ADMIT** (proposed 2026-07-30) | Repeated reversal/repost cycles on one `ref` are genuinely ambiguous on paper — same ref, same accounts, mirrored amounts, and nothing saying which repost a given reversal undid. Rule 2's claim "the GL shows the full story" is **not true today**; this column is what makes it true. |
+| `line_reason` | **ADMIT** (proposed 2026-07-30) | A DR $0.40 to Sales Discounts written by the `$0.99` tolerance rule ([[matching-engine]]) is otherwise indistinguishable from a discount the user granted. Machine-set `LineReason` enum (`TOLERANCE_WRITE_OFF`, `ROUNDING`, `OPENING_BALANCE`, `NSF_REVERSAL`) — **distinct from `memo`**, which is user prose and stays user prose. No FX value: multi-currency is out of v1 ([[v1-scope]]). |
+| `origin_type` / `origin_ref` | **REJECT** (proposed 2026-07-30) | Causation is a Mongo edge ([[financial-object-model]]); which schedule or import run minted an entry changes nothing about how a human reads it. |
+| `cleared` | **REJECT** (proposed 2026-07-30) | Rec state is an appended row on the `Reconciliations` sheet ([[sheets-layer]], [[bank-reconciliation]]). A `cleared` column would require mutating a posted row — rule 1 forbids it. |
+| every other id (`decision_id`, `process_id`, `policy_version`, `evidence_ref`) | **REJECT** (proposed 2026-07-30) | Names not ids. All reachable via `get_object` ([[context-assembly]]). |
 
 ## Append-only rules (integrity crux)
 
