@@ -42,7 +42,7 @@ Every enum value is defined once in `app/domain/enums.py` (principle #7). No dec
 
 ## v1 decision kinds
 
-`MATCH` (already exists, becomes an instance of this shape) · `APPROVAL` · `REJECTION` · `CATEGORIZATION` (which account the agent chose, and why) · `TOLERANCE_WRITE_OFF` · `DUPLICATE_DISPOSITION` (warned → posted anyway / abandoned) · `UNCATEGORIZED_PARKING` · `CLEARING` (a statement row paired to a GL line) · `LOCK` · `UNLOCK` · `VOID` · `AMENDMENT`.
+`MATCH` (already exists, becomes an instance of this shape) · `APPROVAL` · `REJECTION` · `CATEGORIZATION` (which account the agent chose, and why) · `TOLERANCE_WRITE_OFF` · `DUPLICATE_DISPOSITION` (warned → posted anyway / abandoned) · `UNCATEGORIZED_PARKING` · `CLEARING` (a statement row paired to a GL line) · `LOCK` · `UNLOCK` · `VOID` · `AMENDMENT` · **`PRIOR_RETURN_BASIS`** · **`MIGRATION_COMPLETE`** · **`CUTOFF_DATE_CONFIRMATION`** · **`STATEMENT_ROW_DISPOSITION`** · **`PREPAYMENT_12_MONTH_TEST`** — the first two carry decisions [[onboarding-opening-balances]] already mandates and which previously had no legal `kind` to be written as **(proposed 2026-07-31)**.
 
 ## `provenance` — the posting-side projection of a decision
 

@@ -39,6 +39,10 @@ The conditions above appear across five future call sites — `verify_books`, th
 | `REC_PERIOD_DISCONTINUITY` | statement beginning balance ≠ prior run's ending balance — a skipped or overlapping statement | `REC_RUN` ([[bank-reconciliation]]) |
 | `CUTOFF_DATE_UNCONFIRMED` | a money-**out** row the file marks **cheque-shaped**, or any money-**in** row, dated within `cutoff_ask_days` of the fiscal year start — the statement date is a *clearing* date, not the recognition date ([[cash-basis-recognition]] R10). **Never raised on a credit-card import whose mapping supplies a transaction date distinct from the posting date** (R1(b)). The narrowing is the rule: raised on every early-January row, a 22-row card CSV yields 22 dispositions where R10 requires zero. **(proposed 2026-07-31)** | `IMPORT_RUN` + the fiscal-year-end close |
 | `EVIDENCE_MISSING` | subject has no linked evidence | [[evidence]] |
+| `OFFSET_INTENT_UNDECLARED` | posting matches R5a's account+ref shape without `OFFSET_SETTLEMENT` on both legs — a real offset would silently omit receipts **(proposed 2026-07-31)** | [[cash-basis-recognition]] R5a |
+| `PREPAYMENT_PERIOD_UNCONFIRMED` | prepayment posted with no `PREPAYMENT_12_MONTH_TEST` decision; defaults to the capitalized branch **(proposed 2026-07-31)** | [[cash-basis-recognition]] R12 |
+| `UNMAPPED_RECOGNIZED_LINE` | a recognized amount landed on an account with no `tax_line` **(proposed 2026-07-31)** | packet, `verify_books` |
+| `DISPOSAL_FORM_4797` | posting contains a gain/loss-on-disposal leg — out of Schedule C scope **(proposed 2026-07-31)** | packet face |
 
 Every exception carries a `Disposition` — `OPEN | RESOLVED | ACKNOWLEDGED` — with **actor and reason**. `ACKNOWLEDGED` is how a close proceeds over a known exception without pretending it was fixed ([[period-locking-month-close]] step 1). Ages and windows are thresholds on the versioned [[policy-set]], not constants. **(proposed 2026-07-30)**
 
