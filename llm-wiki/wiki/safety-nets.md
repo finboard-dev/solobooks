@@ -43,6 +43,10 @@ The conditions above appear across five future call sites — `verify_books`, th
 | `PREPAYMENT_PERIOD_UNCONFIRMED` | prepayment posted with no `PREPAYMENT_12_MONTH_TEST` decision; defaults to the capitalized branch **(proposed 2026-07-31)** | [[cash-basis-recognition]] R12 |
 | `UNMAPPED_RECOGNIZED_LINE` | a recognized amount landed on an account with no `tax_line` **(proposed 2026-07-31)** | packet, `verify_books` |
 | `DISPOSAL_FORM_4797` | posting contains a gain/loss-on-disposal leg — out of Schedule C scope **(proposed 2026-07-31)** | packet face |
+| `WRITE_OFF_INTENT_UNDECLARED` | a settlement's money leg is short of the AR credit and the difference landed on a P&L account with no `PRINCIPAL_WRITE_OFF` tag **(proposed 2026-08-01)** | [[cash-basis-recognition]] R3 |
+| `PREPAID_AMORTIZATION_UNLINKED` | an amortization line whose prepaid leg cannot be identified — recognizes nothing on cash **(proposed 2026-08-01)** | [[cash-basis-recognition]] R12 |
+| `OPENING_JE_OVERLAP_BREAK` | opening-JE line + Σ historical-document lines ≠ the captured prior-TB balance **(proposed 2026-08-01)** | [[onboarding-opening-balances]] |
+| `HISTORICAL_DOC_POSTS_OBE` | under `prior_return_basis = CASH`, a historical open document posted OBE — the deletion signature **(proposed 2026-08-01)** | [[onboarding-opening-balances]] |
 
 Every exception carries a `Disposition` — `OPEN | RESOLVED | ACKNOWLEDGED` — with **actor and reason**. `ACKNOWLEDGED` is how a close proceeds over a known exception without pretending it was fixed ([[period-locking-month-close]] step 1). Ages and windows are thresholds on the versioned [[policy-set]], not constants. **(proposed 2026-07-30)**
 
