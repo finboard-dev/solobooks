@@ -120,6 +120,23 @@ Enterprise machinery correctly refused: contract/order objects, revenue schedule
 - Redundancy removed: v1-scope rewritten as single authoritative cut (accretion layers folded); buyer-panel-findings scope list → pointer to v1-scope; dated "(added 2026-07-18…)"/"SUPERSEDES" annotations stripped from 10 pages (provenance lives in frontmatter sources + this log); auth-wiring supersedes-footnote removed; index Implementation stubs replaced
 - Coherence added: the-skill now carries principal/interest + reconciliation flows; cash-basis history note moved to log; original features/ design doc marked SUPERSEDED with pointer to wiki
 
+## [2026-07-31] review | Fourth pass (scoped) → **DO NOT FREEZE.** Batch 3 fixed 7 and created ~11.
+
+> **Supersedes the batch-3 entry below.** All four seams returned BROKEN. Do not build from R1–R12.
+
+- Source: `raw/2026-07-31-ruleset-fourth-pass-memo.md`. Scoped to the three seams batch 3 touched, plus an independent re-verification of the carrier check.
+- **Defect trend, four passes: ~17 → 9 (5 self-inflicted) → 20 (11 self-inflicted). It is not converging; the self-inflicted share is rising.**
+
+**What held.** `Σ recognized ≤ line amount` per (`gl_line`, recognition event) survived a dedicated four-way assault — partial settlement across tax years, R4 pro-rata, R12 shares, R7 negatives, overpayment. The adjudicator: *"Keep it verbatim; it is the best sentence batch 3 wrote."* Deleting the OBE-substitution bullet was also confirmed correct by all four attackers. R12's **idea** — decide the branch at entry, carry a tag, never let the view guess a benefit period — is a genuine durable fix; only its **placement** is wrong (the tag belongs on the settlement, not the document).
+
+**What broke.** R12's carrier, three independent ways — including a **regression**: batch 3 re-anchored the 12-month test from `benefit_start` to `payment_date`, which admits only policies whose coverage starts the day you pay, i.e. rejects every actual prepayment. The published ladder failed on all three axes (mis-ordered, R6/R7 have no rung, terminal rung mistyped). Rule 5's granularity is account-level where the arithmetic needs amount-level. The re-armed `NONZERO_OBE` signature fires on every *correct* migration and is silent on both defects it was armed against.
+
+**The carrier check: instrument accepted, discharge rejected.** It is real and it is the first thing here to catch this defect class without an adversary — keep it, run it every batch. But the maintainer designed it, ran it over a subset of its own domain, and declared it passing. Invariant 4 never passed at all (`expect.recognized` was never written). Invariant 2 fails in five places. Invariant 3 cannot be discharged statically while `add_account` mints accounts at posting time. Two more invariants are needed (**named writer + undeclared-intent detector**; **every ladder/gate/bridge set must be a partition of R1–R12**) plus a process rule: **no wiki rule edit ships without its plan task in the same commit** — that has failed three passes running and produced the highest-consequence defect in the repo.
+
+**Stop attacking.** Across four passes, twelve attacker-runs hit R5a's arithmetic, R1(c), R10, R3, R4's pro-rata, R8, R11's line-level test and rule 5's core; none broke. A fifth adversary would re-derive the same findings at the same seams, because the seams are wherever the last edit landed and there will always be a new last edit. Run instead: **batch 4** (bounded, no doctrine reopened) → **encode the ladder as a table**, one row per rule stating its rung *or* why it is outside, which makes the missing-rung class unrepresentable rather than merely fixed → **a mechanical verification pass, not an attack pass**. Freeze when that returns clean.
+
+**Risk if frozen today, and who carries it.** `LineReason` and `ExceptionKind` freeze at the first posting and a locked month is immutable forever, so the wiki/plan enum drift is unfixable after go-live except by AMENDMENT over every affected document. The code as planned deducts **$0.00 for the life of every prepaid amortization** and mis-years **every partial settlement**. Both are silent: the trial balance ties, all seven `verify_books` checks pass, and the accrual-to-cash bridge reproduces the error because it is built from the same broken set. That lands on the first customer's first filed Schedule C, and **the taxpayer carries it**.
+
 ## [2026-07-31] fix | Batch 3 — carrier check + the seven third-pass defects. R1–R12 stands, with carriers.
 
 > Supersedes the DO-NOT-FREEZE state below **for the seven named defects only**. The ruleset has **not** been re-attacked since; see the stop condition at the end.
