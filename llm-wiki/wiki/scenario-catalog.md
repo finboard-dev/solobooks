@@ -33,7 +33,7 @@ Vendor credits, partial bill payments, vendor refunds — identical with signs f
 
 | Scenario | Treatment |
 |---|---|
-| Owner pays business expense personally | `DR Expense / CR Owner's Contributions` — the #1 solopreneur transaction |
+| Owner pays business expense personally | `DR <the account the purchase actually was> / CR Owner's Contributions` — the #1 solopreneur transaction. **The debit is whatever was bought, including a balance-sheet account: a $4,200 camera composes `DR Camera Equipment`; hardcoding an expense defeats R4's carve-out and, with R11 in force, deducts it again through §179/MACRS ([[cash-basis-recognition]] R1(c)). (proposed 2026-07-31)** |
 | Owner draws money out | `DR Owner's Draw / CR Bank` |
 | Transfer between accounts / credit-card payoff | Transfer doc — never touches P&L |
 | Customer is also a vendor — offset | JE: `DR AP ref:BILL / CR AR ref:INV` — both balances close. **On cash basis this is a recognition event (constructive receipt and payment); the amount, the intent predicate, the allocation across refs, and the treatment of every other leg are defined once in [[cash-basis-recognition]] R5a — this row deliberately states no amount. (proposed 2026-07-31)** |

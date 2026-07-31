@@ -120,6 +120,29 @@ Enterprise machinery correctly refused: contract/order objects, revenue schedule
 - Redundancy removed: v1-scope rewritten as single authoritative cut (accretion layers folded); buyer-panel-findings scope list → pointer to v1-scope; dated "(added 2026-07-18…)"/"SUPERSEDES" annotations stripped from 10 pages (provenance lives in frontmatter sources + this log); auth-wiring supersedes-footnote removed; index Implementation stubs replaced
 - Coherence added: the-skill now carries principal/interest + reconciliation flows; cash-basis history note moved to log; original features/ design doc marked SUPERSEDED with pointer to wiki
 
+## [2026-07-31] ingest | Second adversarial pass → ruleset closed at R1–R12
+
+- Source: `raw/2026-07-31-ruleset-second-pass-memo.md`. Four angles attacked the **revised** R1–R11 (nobody had); adjudicated. **Verdict: FREEZE WITH EDITS** — the architecture held (the allowlist shape, `min()`, composition-carries-basis, the signed residual, the `(txn_id, account_number, side)` triple), but **8 defects put a wrong number on a filed Schedule C** and several were introduced by the *previous* fix.
+- Applied in two batches (`fb1a863` mechanical, this commit judgment) so the accounting changes could be verified separately.
+
+### Defects the previous revision INTRODUCED (worth recording as a pattern)
+
+- **W3 — the `prior_return_basis` CASH branch put a $12,000 asset on the books twice.** The fix for a silent *omission* created a silent *duplication*: the trial balance ties, the balance sheet balances, net book value looks plausible, and R11 then depreciates the duplicate for seven years. Root cause: rule 5 banned only AR/AP from the opening JE, which was sufficient **only** because the old ACCRUAL composition offset to OBE and cancelled the plug by construction. Now: the opening JE excludes every account a historical document's composition will post, and a balance-sheet-composed historical document offsets OBE.
+- **W2 — R11's prepaid clause stated the accrual answer inside the cash ruleset.** And deleting it alone would make cash-basis insurance $0 forever, so **R12** ships with the deletion.
+- **W8 — the layer-5 gate rewording failed a *correct* Golden Company by $7,000** on the R6 retainer and the R5 bad-debt write-off, both CPA-endorsed and both cited two lines below the wording that was changed. Both prior wordings were wrong; the gate is now a **line-by-line attribution** to an enumerated set with an unattributed cent failing.
+- **W16/W17 — two fixes landed in the wiki and not in the plan**, and they were the irreversible ones.
+
+### New rules and hardening
+
+- **R12** — prepayments recognize at payment under the 12-month rule (Reg. §1.263(a)-4(f)); the later amortization recognizes nothing. Exactly one branch fires.
+- **R11** — the test is now **line-level on the line's own `detail_type`**, never "its contra": `gl_lines` has no line pairing, so a bundled year-end JE recognized $1,700 instead of $500 and a three-line abandonment was undefined. Form-independent, so a direct write-down cannot silently return line 13 to $0.
+- **R5a** — gated on `line_reason = OFFSET_SETTLEMENT`, never on a Reversal; **mutuality deliberately NOT required** (*Old Colony Trust* — a payment to my vendor by my customer at my direction is constructive receipt with different counterparties); allocation **pro-rata**, ordering rules forbidden.
+- **R1(a)** — money accounts are `detail_type ∈ MONEY_ACCOUNT`, **never a literal list**; processor balances are money accounts held by an agent, so a Shopify seller's year-end receipts stop landing in the wrong year against the 1099-K.
+- **R1(c) / R3 / R10** — owner-paid purchases compose the account actually bought; a principal haircut riding a payment recognizes nothing (Reg. §1.166-1(e)); money-in requires **presently payable and unrestricted** (*Kahler*) and is asked **asymmetrically**, because no deposit row carries a marker a shape test could narrow.
+- **Composition preamble** — R1–R12 is a priority-ordered predicate evaluated **once per line**, not a union; every line recognizes at most once. Asset disposals are Form 4797, out of Schedule C scope.
+- `DetailType` is declared **the recognition key**, enumerated in full; `LineReason` gains `COST_RECOVERY` and `OFFSET_SETTLEMENT`; seed COA gains Merchant Clearing, Prepaid Expenses, Amortization accounts, Machinery & Equipment, Sales Returns, **Inventory and COGS**.
+- Attacker claims **refuted** and recorded so they are not resurrected: R5a must *not* require same-counterparty mutuality; deleting R11's prepaid clause alone is harmful; `normal_balance` for Accumulated Depreciation is not mis-derived; §195/§197/§168(k) already match R11's test.
+
 ## [2026-07-30] ingest | Tri-persona review (CFO / Shopify solopreneur / CPA 2nd pass) → ruleset closed at R1–R11
 
 - Source: `raw/2026-07-30-tri-persona-review.md`. 43 findings, adversarially verified → **0 blocking, 6 serious**.

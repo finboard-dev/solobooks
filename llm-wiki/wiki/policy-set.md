@@ -22,7 +22,7 @@ Every policy input is currently a mutable scalar with no effective date. Mutatin
 | `fiscal_year_start` changed | Retained Earnings is computed at query time, so **locked** balance sheets restate |
 | `sales_tax.flat_rate` changed | a revised invoice PDF disagrees with the original the customer holds ([[invoice-artifact]]) |
 | `match_tolerance` changed | the packet's promised tolerance write-off list is not derivable at all |
-| R1–R11 revised (**already happened twice** — `log.md` 2026-07-18 and 2026-07-30) | locked-period cash P&Ls change with no trace |
+| R1–R12 revised (**already happened twice** — `log.md` 2026-07-18 and 2026-07-30) | locked-period cash P&Ls change with no trace |
 
 None of these touch a single GL row. The ledger stays perfectly append-only and the *reports* still change — which is precisely the founder's point that meaning is not stored in the record.
 
@@ -36,7 +36,7 @@ PolicySet {
   accounting_basis, approval_mode, fiscal_year_start, timezone
   sales_tax {enabled, flat_rate}
   coa_tax_line_map  # account -> Schedule C line, versioned WITH the set
-  ruleset_versions {cash_basis: "R1-R11@2026-07-30", matching: "…"}
+  ruleset_versions {cash_basis: "R1-R12@2026-07-31", matching: "…"}
   thresholds {…}
 }
 ```
@@ -52,7 +52,7 @@ Policy sets are **append-only**; [[company-object]] holds a pointer to the curre
 Seven thresholds live as hardcoded constants across five modules today (`$600` 1099, `$0.99` tolerance, `±3d` duplicate window, silence nudge written as both ">2 weeks" and ">14 days" for one threshold, the 50-row tail-check).
 
 - **Statutory** (`form_1099_nec_threshold`) — set by law, effective-dated **by tax year**, resolved as-of the report's period. A January packet reports the year just ended; applying today's number to last year's 1099s is a filing error with the same shape as the `tax_line` bug.
-- **Operational** (`match_tolerance`, `duplicate_window_days`, `silence_nudge_days`) — behavioral knobs. They belong on the versioned policy set, **not in deployment config**: `match_tolerance` drives a real GL line ([[matching-engine]]) and a process-wide env var means one company's write-off is unexplainable from another's books.
+- **Operational** (`match_tolerance`, `duplicate_window_days`, `silence_nudge_days`, **`cutoff_ask_days`** — it drives an agent question that decides which tax year a deduction falls in, so it resolves as-of the report's period and is stamped on the header **(proposed 2026-07-31)**) — behavioral knobs. They belong on the versioned policy set, **not in deployment config**: `match_tolerance` drives a real GL line ([[matching-engine]]) and a process-wide env var means one company's write-off is unexplainable from another's books.
 
 The tail-check's 50-row window is neither — it is an implementation detail of [[sheets-layer]] and stays there.
 
