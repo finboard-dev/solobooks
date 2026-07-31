@@ -120,6 +120,24 @@ Enterprise machinery correctly refused: contract/order objects, revenue schedule
 - Redundancy removed: v1-scope rewritten as single authoritative cut (accretion layers folded); buyer-panel-findings scope list → pointer to v1-scope; dated "(added 2026-07-18…)"/"SUPERSEDES" annotations stripped from 10 pages (provenance lives in frontmatter sources + this log); auth-wiring supersedes-footnote removed; index Implementation stubs replaced
 - Coherence added: the-skill now carries principal/interest + reconciliation flows; cash-basis history note moved to log; original features/ design doc marked SUPERSEDED with pointer to wiki
 
+## [2026-07-31] review | Third adversarial pass → **DO NOT FREEZE**. R1–R12 is not converging.
+
+> **Read this before building anything from R1–R12 or from commit `baa83dd`.** The entry below it says the ruleset was "closed at R1–R12". It was not. Nine confirmed defects, **five introduced by that very commit**, two of them permanent tax disallowances.
+
+- Source: `raw/2026-07-31-ruleset-third-pass-memo.md`. Four angles + adjudicator, targeting the half of the second pass that had never been attacked.
+- **W-1 (worst).** Pre-batch-2 R11's `prepaid-asset` contra clause **worked** — it caught multi-year prepaid amortization and gave the right answer. Batch 2 deleted it, replaced the contra test with an own-account `detail_type` test that cannot match an ordinary expense account, added an explicit "prepaid amortization is excluded" sentence, and then pointed R12's capitalized branch back at R11. A $3,000 three-year premium now deducts **$0.00 forever** — verbatim the outcome R12's own closing sentence claims to prevent. A $1,100 timing error became a $3,000 permanent disallowance. `LineReason.COST_RECOVERY`, added to a frozen enum for this purpose, is **read by no rule**.
+- **W-2.** R12's 12-month-rule branch selector has **no evaluator and no carrier**: a 12-month and a 3-year policy post identical rows, and Task 4.3's grep-test forbids the view from reading anything else. Both-branches-fire is also constructible ($6,000 on a $3,000 premium).
+- **W-4.** The composition preamble ("once per `gl_line` … at most once, on exactly one date") **outlaws partial settlement** — R4's own mechanic, the modal solopreneur event, and two existing fixtures. Copied verbatim into plan Task 4.3.
+- **W-5.** Inventory + COGS were seeded on the maintainer's own initiative, absent from both source memos, **against a `verified` scope page** that puts inventory out of v1 — and no rule in R1–R12 recognizes either leg. Schedule C Part III = $0 forever *and* the purchase is never deducted. **Resolution: delete the accounts; the proposed R13 is a scope expansion smuggled through a seed list and is rejected.**
+- **W-6.** Onboarding now carries **two competing fixes for the same defect** (rule 5 strips the account from the opening JE; the `:29` bullet substitutes OBE into the document). Either alone is correct; **together the asset is on the books zero times**, and `:29` alone destroys the modal no-prior-TB user's basis while the same commit disarmed `NONZERO_OBE` for that branch.
+- **W-7.** The accrual-to-cash bridge was applied by **neither** batch — it lived in the second memo's section-4 checklist while the work was done from the W-numbers.
+
+### The meta-finding, which matters more than any single defect
+
+Three passes, one failure mode: **mechanical edits land cleanly; judgment edits break the adjacent rule that was written against the old semantics.** More review passes will not fix this. Four **grep-able carrier invariants** would have caught W-1, W-2 and half the outstanding checklist with no review at all: (1) every enum member added must be *read* by some rule; (2) every field a rule reads must exist in a frozen list; (3) every rule that recognizes an amount must name an account carrying a `tax_line`; (4) every fixture must have an `expect` slot able to assert its claim. Currently failing, in order: `LineReason.COST_RECOVERY`; R12's benefit period; R6 and R12; eight fixtures.
+
+**Next action is the carrier check, not another edit sprint.** A fourth pass is worth running only after batch 3, scoped to the three seams the memo names (R12's carrier; the per-(line, event) preamble against the per-document rules; whichever onboarding mechanism survives, against R11/R12). Re-attacking R5a, R1(c), R10, R3 or batch 1 is explicitly negative-value — four attackers hit each and none broke.
+
 ## [2026-07-31] ingest | Second adversarial pass → ruleset closed at R1–R12
 
 - Source: `raw/2026-07-31-ruleset-second-pass-memo.md`. Four angles attacked the **revised** R1–R11 (nobody had); adjudicated. **Verdict: FREEZE WITH EDITS** — the architecture held (the allowlist shape, `min()`, composition-carries-basis, the signed residual, the `(txn_id, account_number, side)` triple), but **8 defects put a wrong number on a filed Schedule C** and several were introduced by the *previous* fix.

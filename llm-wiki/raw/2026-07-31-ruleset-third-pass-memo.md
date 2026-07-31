@@ -1,0 +1,153 @@
+# Ruleset Third-Pass Adjudication (2026-07-31)
+
+> Immutable source. Four angles against R1-R12 as committed at baa83dd. Verdict: DO NOT FREEZE.
+
+## VERDICT: DO NOT FREEZE
+
+Three passes, and the ruleset is **not** converging. The count is not the problem — the *class* is. Pass 1 closed at R1–R11. Pass 2 found ~17 defects and shipped fixes. Pass 3 finds **9 distinct confirmed defects, 5 of them created by pass 2's own fixes**, and two of those five are *permanent disallowances* — strictly worse than the timing errors they replaced. R12, the rule pass 2 added to prevent "$0 forever," is broken in both directions: its capitalized branch is unreachable, and its branch selector has no evaluator. The same $12,000 machine has now been wrong three ways in three passes (omitted → duplicated → deleted).
+
+Countervailing, and it is why this is a fix list and not a redesign: **the architecture held under four independent attacks.** R5a's intent predicate + pro-rata allocation, R11's line-level `detail_type` test on its own terms, R1(c), R10's asymmetric ask, R3's haircut *doctrine*, and all of batch 1 (W12/W13/W16/W17) were each re-derived by multiple attackers and survived. Every failure is at a **seam between two rules edited in the same pass**, where each assumed the other would catch the line. That is a bounded, ~11-edit batch — not churn in the design.
+
+---
+
+## 2. Demonstrably wrong — verified against the files, ranked
+
+### W-1. R12's capitalized branch is unreachable. R11 says in terms that it must not fire. Multi-year prepaid = $0.00 forever. *(regression)*
+`cash-basis-recognition.md:37` → "its amortization lines are emitted with `LineReason.COST_RECOVERY`, and they recognize under **R11** instead."
+`cash-basis-recognition.md:36` → "...**iff its own account's `detail_type` ∈ `CostRecovery`**... **Prepaid amortization is NOT cost recovery and is excluded — see R12.**"
+
+A ⊕ ¬A, both written in `baa83dd`. `DR Insurance Expense 83.33 / CR Prepaid Expenses 83.33` — Insurance Expense's detail_type is an ordinary expense type, the `iff` fails, and R11 affirmatively excludes it. $3,000 36-month premium: **$0.00 deducted, ever**. I verified the regression at `62b6b52` — old R11 read "a P&L line whose contra is a contra-asset, accumulated-amortization **or prepaid-asset** account," which *did* fire and gave $83.33. Batch 2 converted a $1,100 timing error into a $3,000 permanent disallowance, one sentence after warning against exactly that outcome. `LineReason.COST_RECOVERY`, added to the frozen enum by the same commit, is read by **no rule** — a write-only enum member.
+
+**Fix — R11, replace the mechanical sentence and delete the exclusion:**
+> …a P&L line recognizes on both bases at its own date **iff its own account's `detail_type` ∈ `CostRecovery` (`DEPRECIATION`, `AMORTIZATION`, `DEPLETION`) OR its own `line_reason = COST_RECOVERY`.** The second limb is R12's capitalized branch and is the only route by which prepaid amortization reaches R11: it debits an **ordinary expense account** (Insurance, Rent, Software), so the deduction keeps that account's `tax_line` — which an `Amortization Expense` account could not give it (Sch C line 13 instead of 15). An **untagged** debit to an ordinary expense account with a prepaid contra recognizes nothing: the tag, not the shape, is the predicate.
+
+Also bound the gate term (`:39` and `testing-strategy.md:18`): *"prepaid timing (R12) — which must be **signed and self-reversing**: Σ(prepaid attributions) over the life of a prepayment = 0.00. A prepaid delta that never reverses is a permanent disallowance wearing a timing label, and fails the gate."* As written, the gate passes every year while the deduction is lost forever.
+
+### W-2. R12's branch selector has no evaluator and no stored input. The view is asked to guess.
+The 12-month rule keys on the benefit period. I checked every carrier: not in `general-ledger-sheet.md:16`'s nineteen columns; not on `accounts` (`chart-of-accounts.md:14` has **one** `PREPAID_ASSET` member); and plan Task 4.3's grep-test forbids `views.py` from reading anything outside `gl_lines`/`accounts`/`rec_clears`. A $1,200 12-month policy and a $3,000 3-year policy post **byte-identical rows**. Uniform branch 1 → $2,916.67 overstated in one year (the textbook §1.263(a)-4 audit adjustment); uniform branch 2 → $0 forever for both. "Exactly one branch fires" has no enforcement mechanism, and the only ledger-derivable discriminator (look for a later `COST_RECOVERY` line) silently restates a filed period six months after the return goes out.
+
+This is **W1's own defect reproduced inside W1's replacement** — batch 2 removed a non-computable predicate from R11 and wrote a new one into R12 in the same commit.
+
+**Fix — replace R12 entirely:**
+> **R12 — Prepayments: the branch is decided at entry and posted, never inferred by the view. (proposed)** When a prepayment is composed the agent asks the coverage period — it already asks for a category — and records a `HUMAN` [[decision-record]] of kind `PREPAYMENT_12_MONTH_TEST` carrying `benefit_start`/`benefit_end`. Where `benefit_end ≤ min(payment_date + 12 months, end of the tax year following payment)` — Reg. §1.263(a)-4(f)(1), applied to **an amount paid**, not to a document — the prepaid **debit leg posts with `line_reason = PREPAID_12_MONTH`**; otherwise it posts untagged and every amortization line of that prepayment carries `line_reason = COST_RECOVERY`.
+> — **Cash branch:** a prepaid-asset leg carrying `PREPAID_12_MONTH`, reached by a recognition event — directly, or through an R4 settlement, in which case it recognizes that settlement's pro-rata share (`applied ÷ document total × leg`) and **each share exactly once** — recognizes on the cash basis at that date. Its later amortization recognizes nothing on cash.
+> — **Capitalized branch:** an untagged prepaid leg recognizes nothing at payment; its `COST_RECOVERY`-tagged amortization recognizes under R11, on both bases.
+> The two members are mutually exclusive at posting time, which makes "exactly one branch fires" true **by construction** rather than asserted. The view has no benefit period to read and must never be asked to guess one; a rule whose branch depends on a JE posted six months later restates a filed period ([[policy-set]]). A leg settled across two tax years may legitimately have one share deducted and another capitalized — "exactly one branch" is a statement about each **share**, not about the document. Unanswered, the prepayment defaults to the capitalized branch and raises `PREPAYMENT_PERIOD_UNCONFIRMED` ([[safety-nets]]) — an exception, never a block. **The recognized amount carries the prepaid sub-account's own `tax_line`** (see seed COA). `LineReason` freezes at the first posting; `PREPAID_12_MONTH` must be added before any book opens.
+
+### W-3. Rules that recognize a **non-P&L leg** name no presentation account — so R12 and R6 both file $0 even when they work.
+R12 puts a 1xxx asset line (`DR Prepaid Expenses 1,200`) into `v_pnl_cash`. The packet groups by `tax_line` (`reports-and-analytics.md:30`); balance-sheet accounts carry none. Schedule C line 15 = **$0.00** with $1,200 unmapped, and the cash P&L prints a row captioned "Prepaid Expenses." It cannot be patched by mapping the account, because batch 2 seeded exactly **one** generic `Prepaid Expenses` and one account cannot carry lines 15, 20b and 18/27a simultaneously — precisely the three cases R12 names.
+
+Same hole, pre-existing, in **R6**: it recognizes at receipt "under *Customer deposits received*" — a caption that is **not in the seed COA at all**, on a posting whose only non-money leg is a liability. This generalizes; state it once in the preamble (wording in W-4).
+
+**Fix — `chart-of-accounts.md:22` seed list:** replace `Prepaid Expenses` with **Prepaid Insurance / Prepaid Rent / Prepaid Software** as sub-accounts of a `Prepaid Expenses` parent, each `detail_type = PREPAID_ASSET` and **each carrying its own `tax_line`**; add **Customer Deposits Received** (income, Sch C line 1). A prepayment with no matching sub-account is created as a new one at posting time, never parked in the parent.
+
+### W-4. The composition preamble outlaws partial settlement — R4's own mechanic and the modal solopreneur event. Copied verbatim into plan Task 4.3.
+`:16` — "evaluated **once per `gl_line`** … **every line recognizes at most once, on exactly one date.**" `INV-0042` `CR Sales 1,000`, paid $400 on 12/20/2026 and $600 on 01/10/2027, is **one** gl_line. Either it resolves to $1,000 on the first date (FY2026 overstated $600) or to $400 and is spent (**$600 of gross receipts permanently omitted** against a filed 1099). There is no third answer under the stated law. This is Task 1.8's own `partial_payment` fixture and Task 1.9's `bill_partial_payment`. Plan Task 4.3 now instructs the implementer to build it this way — a `GROUP BY gl_line` shape is structurally incapable of settlement-proportional recognition. W10's actual concern was two rules claiming one line on the **same** event; the generalization also forbids one line recognizing on two **different** events.
+
+Two attackers found this; **angle 4 explicitly certified the preamble correct and is wrong**.
+
+**Fix — replace the preamble:**
+> **How the rules compose. (proposed)** R1–R12 are a priority-ordered predicate evaluated once per **(`gl_line`, recognition event)** pair: for any one event exactly one rule may claim a line, and over all events a line's recognized amounts sum to at most its own amount. Partial settlement is the normal case — a $1,000 Sales line paid $400 then $600 recognizes $400 and $600 **on two dates** under R4 pro-rata; "once per line" forces both into one year. The invariant is `Σ recognized ≤ line amount`, never "once."
+> **The priority order is:** R2 (equity) → R8 (a Transfer's **money-account legs**, never a P&L leg riding on it — a $10 wire fee is deductible) → R5/R5a-suppressed legs → R11 (cost recovery) → R12 (prepaid) → R3 (direct P&L leg) → default: balance-sheet lines recognize nothing. **R4 is not in the ladder**: it determines which lines a settlement *reaches* and in what amount (`applied ÷ document total`); each reached line then runs the ladder exactly as a directly reached line does. "Priority-ordered" without a published order is not a definition, and it is stamped in `ruleset_versions`.
+> The rules are evaluated over `gl_lines`, and `v_pnl_cash` is a **recategorization, not a subset of `v_pnl`** — recognized amounts include legs on non-P&L accounts (R6's Unearned Revenue credit, R12's prepaid debit). `v_pnl` (accrual) contains every P&L line by construction and is never modified by a recognition rule. **Every rule that recognizes a non-P&L leg must name the account the amount is presented under, and that account must carry a `coa_tax_line_map` entry**; a recognized amount landing on an account with no `tax_line` raises `UNMAPPED_RECOGNIZED_LINE`.
+> **Disposals** of depreciated assets are out of scope for Schedule C — §1245/§1231 Form 4797 income, not SE-taxed. Out of scope means **excluded from `v_pnl_cash`, not merely unmapped**: a `GAIN_ON_DISPOSAL`/`LOSS_ON_DISPOSAL` leg recognizes nothing on cash (it remains a `v_pnl` line and the balance sheet stays right), no `tax_line` may map it, and any posting containing one raises `DISPOSAL_FORM_4797` on the face of the accountant packet with cost, accumulated depreciation and proceeds.
+
+*(That last clause fixes a separate confirmed hole: as written the preamble bars only the `tax_line`, so R1(a)+R3 still push a $900 recapture gain into `v_pnl_cash` — the packet's P&L and its Schedule C then disagree by $900 with no reconciling line, and the taxpayer gets no Form 4797 signal.)*
+
+### W-5. Inventory + COGS seeded with no rule that recognizes either leg. Schedule C Part III = $0 forever. Contradicts `v1-scope`.
+`chart-of-accounts.md:22` seeds them "so that `DR COGS / CR Inventory` has a home." I traced both legs through all twelve rules. `DR Inventory / CR Checking`: R1(a) fires, R3 finds no P&L leg, R4's carve-out keeps it balance-sheet → **$0**. `DR COGS / CR Inventory`: no money account moves, so it is **not a recognition event at all**; R11 fails (COGS ∉ CostRecovery), R12 fails (not PREPAID_ASSET) → **$0**. The goods are deducted **nowhere, ever**. On the design's own modal Shopify persona that is ~$10k of tax on income that does not exist, compounding annually. The page's note — "it recognizes under R12/R11 only if its account's `detail_type` says so" — is affirmatively wrong: neither can ever fire. `v1-scope.md` lists **inventory** under "Out of v1 (deliberately)." Before batch 2 the scenario was not expressible with seeded accounts.
+
+**Fix:**
+> **Inventory and Cost of Goods Sold are deliberately NOT seeded (proposed):** inventory is out of v1 ([[v1-scope]]), no [[scenario-catalog]] row posts to them, and `DR COGS / CR Inventory` matches **no rule in R1–R12** — neither leg moves a money account, settles a document, or carries a `CostRecovery` `detail_type` — so seeding them reports Schedule C Part III as **$0.00 forever while the purchase is never deducted either**. Goods bought for resale post to a P&L materials/supplies account and recognize at payment under R1(a)+R3. Admitting inventory in v2 requires a recognition rule (§471(c) / Reg. §1.162-3(a)(1): the **later** of paid and consumed), not a seed-account entry.
+
+Delete `INVENTORY, COGS` from `DetailType` in plan Task 1.1. **Reject** the attackers' proposed R13 — that is a scope expansion smuggled in through a seed list.
+
+### W-6. Onboarding ships **two competing fixes for W3**; applying both deletes the asset, and one of them destroys R12 deductions.
+`:18` (rule 5) strips the account from the **opening JE**. `:29` substitutes **OBE into the document**. Each alone is correct for the full-TB migrator; together the machine is on the books **zero** times. Worse, `:29` alone fails the *modal* CASH user — `:21` makes CASH the default whenever no accrual return was filed, and step 2 offers "what was your checking balance on Jan 1?" — for whom the historical bill is the **only** thing that puts the machine on the books at all: Machinery = $0, basis destroyed permanently, and `:31` (same commit) pre-declares the resulting `NONZERO_OBE` "expected, not a missed check," disarming the one detector. `:26`/`:28` and `:29` also give flatly opposite compositions for the same worked example on the same `verified` page.
+
+And `:29`'s stated justification — "the recognized result is identical either way" — is **refuted by R12, shipped in the same commit**: an R4 settlement reaching a prepaid leg recognizes in full, so substituting OBE permanently destroys the deduction on every prepaid a prior cash filer carries across.
+
+I re-derived both mechanisms. **Rule 5 alone is complete and correct in both the full-TB and no-TB cases.** Delete `:29`.
+
+**Fix — replace `:29`:**
+> - **Under `CASH` a historical open document always carries its real composition — never OBE. (proposed, supersedes the 2026-07-31 OBE-substitution bullet)** Duplication is prevented entirely by rule 5, which strips the account from the *opening JE*; substituting OBE into the *document* is a second fix for the same defect and it deletes the asset. Full prior TB (Checking 5,000 DR / Machinery 12,000 DR / Accum Dep 2,000 CR / AP 12,000 CR / Owner's Equity 3,000 CR): the opening JE strips **both** AP and Machinery, plugs 0.00, and the bill posts `DR Machinery & Equipment 12,000 / CR AP 12,000` — the machine appears exactly once and the TB matches the prior TB. With **no prior TB** (the modal `CASH` user) that bill is the *only* thing that puts the machine on the books; substituting OBE drops it, taking its whole §179/MACRS basis permanently and yielding no deduction when the $12,000 is paid either. The composition is **load-bearing, not cosmetic**: R4 and R12 both read it, so an OBE substitution also destroys a prior cash filer's deduction on every prepaid carried across. No onboarding rule may substitute one composition for another on the theory that the recognized result is the same — it is the same only for the compositions no rule reaches.
+
+Rule 5 additionally needs `— OBE excepted, which is rule 3's plug` or it literally bans the plug it depends on. And `:31`: *a residual OBE **equal to a historical document's own amount** is the duplication/deletion signature and must be investigated, not acknowledged.*
+
+### W-7. The accountant packet's accrual-to-cash bridge still double-counts depreciation and has no prepaid term. *(Not batch 2 — applied by **neither** batch.)*
+`reports-and-analytics.md` is untouched by both commits (verified against `git diff 62b6b52..baa83dd --stat`). `:30` still reads `ΔAR/ΔAP/Δunearned/**non-cash**`. R11 says cost recovery is identical on both bases, so a non-cash addback removes depreciation from cash profit that was never in it — the bridge prints $58,400 against a `v_pnl_cash` of $54,900 on facing pages of the same packet. Principle #9: a second hand-authored definition of cash net profit next to the canonical one. `:34` is separately false — "cash basis recognizes on payment lines instead of invoice/bill lines" is untrue for R1(b), R5a, R11, R12 and R10, and an implementer building the toggle from this `verified` page writes exactly the view R11 exists to defeat.
+
+**Fix — `:30`:**
+> **accrual-to-cash bridge** — the terms are exactly **Δ(AR from P&L-composed lines)**, **Δ(AP from P&L-composed lines)**, **Δunearned (R6)** and **prepaid timing (R12)**, and nothing else. **Cost recovery is NOT a bridge term** (R11 — a "non-cash" term double-counts depreciation out of cash net profit). AR/AP from **balance-sheet-composed** documents are not bridge terms either (R4's carve-out — a capitalized bill was never in accrual profit to reverse). **The bridge ties to `v_pnl_cash` to the cent** and is the layer-5 attribution gate shipped as a report — same enumerated set, same unattributed-cent alarm. It is a presentation of the one definition ([[cash-basis-recognition]]), never a second one. **(proposed)**
+
+**`:34`:** > **Cash vs accrual:** one ledger, per-report toggle, default from [[company-object]]. The recognition predicate is defined once and only in [[cash-basis-recognition]] R1–R12; this page states no rule of its own.
+
+---
+
+## 3. Regressions introduced by batch 2 — this pass's reason for existing
+
+**Not clean. Five, and two are permanent tax disallowances.**
+
+1. **W-1 — the headline.** Old R11's prepaid-asset contra clause *fired* and gave the right answer for multi-year prepaids. Batch 2 deleted it, replaced the contra test with an own-account test that structurally cannot match an ordinary expense account, added an explicit exclusion sentence, and then pointed R12's capitalized branch back at R11. **$1,100 timing error → $3,000 permanent disallowance.**
+2. **W-5 — new $0-forever hole, one file over from the one it closed.** Inventory + COGS seeded unprompted (absent from both source memos), against a `verified` scope page, with no recognizing rule.
+3. **W-6 — the modal onboarding path regressed.** At `fb1a863` a no-prior-TB CASH filer got `DR Machinery & Equipment / CR AP` — correct and non-duplicative. Batch 2 made the OBE offset unconditional and deleted the asset, then disarmed `NONZERO_OBE` for that branch in the same commit.
+4. **W-4 — plan Task 4.3 degraded a second consecutive revision.** Pass 2 recorded that it had already lost "settlement-proportional recognition via refs" (vague but correct). Batch 2 replaced it with a shape that is *actively incompatible* with R4.
+5. **W-2 — W1's defect reproduced inside W1's replacement.** Non-computable predicate removed from R11, new non-computable predicate written into R12, same commit.
+
+Plus the meta-pattern: **batch 2's log entry names "fixes landed in the wiki and not in the plan" as the lesson, and the same commit does it three more times** — `StatementRow(txn_date, post_date)`, `expect.recognized`, `DecisionKind.PRIOR_RETURN_BASIS`. Two of the enum members batch 2 introduced (`COST_RECOVERY`) or required (`PRIOR_RETURN_BASIS`) have no reader and no owning page.
+
+---
+
+## 4. Consistency fixes outstanding — checklist
+
+| File | Change |
+|---|---|
+| `cash-basis-recognition.md:20` (R3) | Mechanize the haircut carve-out: predicate is `line_reason = PRINCIPAL_WRITE_OFF`, **never the leg's shape**. `DR Bank 970 / DR Processing Fees 30 / CR AR 1,000` and `DR Bank 970 / DR Bad Debt 30 / CR AR 1,000` are identical in every column and have opposite answers ($1,000 receipts + $30 deduction vs $970 receipts, no §166). W4 got a hard predicate for this exact problem; R3 got prose. |
+| `cash-basis-recognition.md:21` (R4) | Define `applied` where it is used: *"`applied` = the settling AR-credit (or AP-debit) amount for that document within the posting, **less** any `PRINCIPAL_WRITE_OFF` leg of the same posting. On `DR Bank 900 / DR Bad Debt 100 / CR AR 1,000`, `applied` = 900 — not 900 − 100 = 800."* Plan Task 1.9 already encodes 900; the wiki admits both. |
+| `cash-basis-recognition.md:23` (R5a) | Add the missing detector: *"A posting matching R5a's account+ref shape but carrying no `OFFSET_SETTLEMENT` on both legs recognizes nothing **and raises `OFFSET_INTENT_UNDECLARED`**."* Today an undeclared real offset omits $1,200 of gross receipts silently — balanced TB, closed refs, all seven `verify_books` checks passing. Batch 2 inverted the failure mode from over- to under-recognition and added no alarm. |
+| `cash-basis-recognition.md:32` (R9) | *"tax portion of amounts **recognized as received under R1 and R5a — including constructive receipt through a mutual offset**"* — currently an offset recognizes the sale and collects $0 of the embedded tax. The memo mandated this edit; it never landed. |
+| `cash-basis-recognition.md:35` + `safety-nets.md:40` (R10) | Extend the card carve-out to its actual principle: **a row is asked only where the file does not supply the recognition date.** `MERCHANT_CLEARING` became a money account in the same commit, so a Shopify per-transaction import raises one `CUTOFF_DATE_UNCONFIRMED` per order (~312 in two weeks) and blocks the year-end close — the interrogation R10's narrowing exists to prevent. Under R1(a) the credit-to-balance timestamp *is* the recognition date. |
+| `cash-basis-recognition.md:18` (R1a) | Wording: Merchant Clearing is an asset; funds arriving **debit** it. "recognize on credit to the balance" reads backwards against the wiki's own DR/CR convention. |
+| `chart-of-accounts.md:14` vs plan Task 1.1 | The two authoritative `DetailType` lists **differ** (plan has `INVENTORY`, wiki does not) and neither can type ~14 seed accounts. Make the wiki canonical, have the plan quote it verbatim (principle #7), add residual members (`OTHER_INCOME/EXPENSE/ASSET/LIABILITY/EQUITY`) so no rule can fall back to a name match, and add a lint: every seed account maps to a member. This enum **freezes at Task 1.1** and is now part of the ruleset by `:14`'s own declaration — it must be right before the freeze, not after. |
+| `general-ledger-sheet.md:32` + plan Task 1.1 | `LineReason` += `PREPAID_12_MONTH`, `PRINCIPAL_WRITE_OFF`. Freezes at first posting. |
+| plan Task 1.1 + `decision-record.md:45` | `DecisionKind` += `PRIOR_RETURN_BASIS`, `MIGRATION_COMPLETE`, `CUTOFF_DATE_CONFIRMATION`, `STATEMENT_ROW_DISPOSITION`, `PREPAYMENT_12_MONTH_TEST`. Verified missing in both. Without the first, onboarding rule 6's `prior_return_basis` HUMAN decision-record — the previous pass's headline fix — **has no legal `kind` to be written as**. |
+| `safety-nets.md:26` table | += `OFFSET_INTENT_UNDECLARED`, `PREPAYMENT_PERIOD_UNCONFIRMED`, `UNMAPPED_RECOGNIZED_LINE`, `DISPOSAL_FORM_4797`. Mirror into plan Task 1.1's `ExceptionKind`. |
+| plan Task 5.3a (line 319) | `StatementRow(**txn_date, post_date**, description, amount, direction)` — both nullable, mapping recorded on `IMPORT_RUN`. R10 and `safety-nets.md:40` both condition on a discriminator the plan cannot represent; the implementer's only exits are to move $2,400 of December advertising into the next year or to raise the 22 exceptions the wiki promises will not happen. |
+| plan Task 1.8 + `testing-strategy.md:28` | Add `expect.recognized: {cash:{account:amount}, accrual:{...}, period}` with the layer-5 attribution tag, **evaluated in Phase 1** by the same helper pattern as `open_balance`. Eight of Task 1.9's fixtures exist solely to assert recognized amounts and currently have no slot to assert them in — `report_deltas` is ignored before Phase 4, and Task 1.8 says the schema freezes first. |
+| plan Task 1.9 | (a) `ar_ap_offset` appears in **both** bullets with different contents — one filename, two specs, whichever is written second silently wins. Split into `_equal` / `_walkaway` / `_cross_party` / `_with_cash_leg` and delete from the line-195 list. (b) Retarget `prior_return_cash_capitalized_bill` to assert **Machinery = $12,000, not $24,000, and not $0** — the TB ties in all three cases, so it must assert the *account balance*. (c) Add `prior_return_cash_prepaid_bill` (W-6's prepaid case) and `merchant_clearing_year_end` (the un-attacked processor path, named by the previous memo and dropped). |
+| Frontmatter, 11 pages | Six pages carrying 2026-07-31 claims still read `modified: 2026-07-30`, including `cash-basis-recognition` itself. **Zero** pages cite `raw/2026-07-31-ruleset-second-pass-memo.md` in `sources`. This breaks the schema's contradiction scan — the mechanism that would have caught W-6's adjacent-bullet collision. Also update `index.md:32`'s cash-basis summary (still omits R5a, R10, R11, R12), and resolve `policy-set` being `status: draft` while cited as canonical grounds. |
+
+---
+
+## 5. Attacker errors — findings I do not accept
+
+- **"`v_pnl_cash` is structurally a subset of `v_pnl`, so R6/R12 can never enter it"** (angle 2, finding 1). Over-read. The preamble says the rules "**add** lines to `v_pnl_cash`," which is the opposite of a filter, and `duckdb-layer.md:18` calls it a "recategorization." The *underlying* defect — no named presentation account or `tax_line` for a recognized non-P&L leg — is real and is W-3; the claimed mechanism is not. (Fix the `v_lines → v_pnl` / `v_lines → v_pnl_cash` sibling notation anyway; the arrow chain invites the misreading.)
+- **"R12 recognizes the leg's FULL amount on each partial payment — $2,400 on a $1,200 policy"** (angle 1, finding 4 part 1). Over-read. R12's "pro-rata through an R4 settlement" governs the reach; R4's own pro-rata governs the amount. Worth one clarifying clause (folded into W-2's wording), not a defect. **Part 2 of that finding is correct** — §1.263(a)-4(f)(1) applies per *amount paid*, not per document, and a document settled across two years can legitimately split branches. Accepted, also folded into W-2.
+- **"R4 beats R12 by rule number, so a bill-first prepaid deducts $0"** (angle 1, finding 6). Over-read. R12 states "This is the one exception to R4's balance-sheet carve-out on the cash side" — an explicit, readable priority claim. The *real* residue is that the preamble declares an order and never publishes one; that is a consistency fix (folded into W-4), not a wrong number.
+- **"Add R13 for inventory/COGS"** (angles 2 and 4). Rejected. `v1-scope` puts inventory out of v1; the correct move is to remove the accounts, not to admit a new recognition rule through a seed-account list. Angles 1 and 3 got this right.
+- **Angle 1's dismissal of the rule-5/rule-6 collision as "over-reading rather than a finding."** Wrong — it is W-6, the second-largest defect in the batch. Angles 3 and 4 derived it independently and correctly.
+- **Angle 4's certification that "the composition preamble and the Form 4797 disposal carve-out" are correct.** Wrong on both counts — see W-4.
+- **Angle 3's claim that the early-payment-discount case is a filed-number error.** No. R3 explicitly names Sales Discounts as *not* a principal write-off, and $980 nets identically either way; line-1-vs-line-2 presentation only. Real but nit-grade.
+
+---
+
+## 6. Stop condition
+
+**A fourth pass is worth running iff batch 3 makes a judgment edit at a seam — and it will make three.** Every pass has demonstrated the same failure: mechanical edits (enum members, fixture names, frontmatter, the bridge) land cleanly; *judgment* edits break the adjacent rule that was written against the old semantics. Batch 3 necessarily contains three of them: **rewriting R12**, **rewriting the preamble**, and **deleting one of onboarding's two mechanisms**.
+
+So: **run a fourth pass, but scope it to a three-seam re-derivation, not a general re-attack.** It targets exactly —
+
+1. **R12's new `PREPAID_12_MONTH` carrier composed against every path that can reach a prepaid leg**: direct R1(a), R1(b) card charge, R1(c) owner-paid, R4 full and partial settlement, R5a offset settlement — and against R11's new second limb, in both directions (can both fire? can neither?).
+2. **The per-(line, event) preamble composed against every per-document rule**: R5a's "every other leg of the same posting recognizes nothing," R6→R4 retainer drawdown across two invoices, R7 NSF reversal of an already-recognized settlement, and R8's per-line restatement.
+3. **Whichever onboarding mechanism survives, composed against R12 and R11** — specifically: does the surviving rule put a capitalized asset, a prepaid, and an inventory-free materials purchase on the books exactly once in *both* the full-prior-TB and no-prior-TB cases?
+
+**Do not run a fourth pass on:** R5a's arithmetic, R1(c), R10's asymmetry, R3's doctrine, or batch 1. Four independent attackers re-derived each of those and none broke. Re-attacking them is now negative-value.
+
+**One process change that would end this loop faster than another pass.** Before batch 3 ships, run a mechanical **carrier check**, which no pass has done and which would have caught W-1, W-2, and half of §4 on its own:
+
+- every enum member added must be named by at least one rule that **reads** it (`LineReason.COST_RECOVERY` currently fails);
+- every rule that reads a field must have that field in a frozen list — `gl_lines` columns, `accounts` columns, or a declared enum (R12's benefit period currently fails);
+- every rule that recognizes an amount must name an account carrying a `tax_line` (R6 and R12 currently fail);
+- every fixture in the plan must have an `expect` slot capable of asserting its stated claim (eight currently fail).
+
+Four grep-able invariants. Three passes of adversarial review have each independently rediscovered violations of them by hand.
