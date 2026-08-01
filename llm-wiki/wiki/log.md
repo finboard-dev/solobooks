@@ -120,6 +120,22 @@ Enterprise machinery correctly refused: contract/order objects, revenue schedule
 - Redundancy removed: v1-scope rewritten as single authoritative cut (accretion layers folded); buyer-panel-findings scope list → pointer to v1-scope; dated "(added 2026-07-18…)"/"SUPERSEDES" annotations stripped from 10 pages (provenance lives in frontmatter sources + this log); auth-wiring supersedes-footnote removed; index Implementation stubs replaced
 - Coherence added: the-skill now carries principal/interest + reconciliation flows; cash-basis history note moved to log; original features/ design doc marked SUPERSEDED with pointer to wiki
 
+## [2026-08-01] verify | Mechanical verification pass — **CLEAN**. 68 checks, negative-controlled.
+
+- Artifact: `tools/verify_design.py` — the seven invariants as a **committed, repeatable script**, not a transcript. `python3 tools/verify_design.py` exits 0 clean, 1 with failures.
+- **68 checks pass** on the current tree: every carrier read by the specific rule that must read it, every carrier with a named writer and an intent detector, every member mirrored wiki↔plan, every field a rule branches on frozen in its owning page, every recognized non-P&L leg with a `tax_line`-bearing presentation account, ladder 13/13, gate and bridge declared partitions, 40 pages, 0 broken links, every CPA-validated invariant intact.
+
+**The negative control is the part that matters.** A check that cannot fail is worthless, so four historical defects were deliberately reintroduced. The **first version of the script passed two of them** — a live false-negative rate of 50%:
+
+- `INV1` asked "is `COST_RECOVERY` read by *any* rule". Deleting R11's `line_reason` limb — the pass-3 W-1 defect that deducts $0.00 for the life of every multi-year prepaid — **passed**, because R12 still mentioned the same token. Now each carrier is bound to the *specific* rule that must read it.
+- `INV4` matched the bare word `recognized`, which appears four times in prose on that page, so **removing the `expect.recognized` slot passed**. Now anchored to a table row.
+
+Retested after tightening: all four defects fail, each against the correct invariant — R11's limb → INV1, R6's missing rung → INV6, the removed slot → INV4, the broken mirror → INV7.
+
+**This is the first instrument in the project with a measured detection rate rather than an asserted one.** Run it before every commit that touches a rule, an enum, or a plan task.
+
+**Scope, stated plainly:** it verifies **encoding, never doctrine**. It cannot tell you whether R12 states the law correctly — only that R12's carriers exist, are read, are written, and are mirrored. Accounting correctness rests on the four adversarial passes in `llm-wiki/raw/`, whose consistent finding was that the doctrine had converged and only the encoding kept breaking.
+
 ## [2026-08-01] fix | Batch 4 — the twenty fourth-pass defects, and the ladder becomes a table
 
 > Supersedes the DO-NOT-FREEZE entry below **for the twenty named defects**. Not yet verified by the mechanical pass; see the close.
